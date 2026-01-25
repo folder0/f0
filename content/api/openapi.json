@@ -1,0 +1,361 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "f0 API",
+    "description": "Internal API for the f0 documentation platform. This API handles content retrieval, navigation, and authentication.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "API Support",
+      "email": "support@example.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Development server"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Content",
+      "description": "Content retrieval endpoints"
+    },
+    {
+      "name": "Navigation",
+      "description": "Navigation structure endpoints"
+    },
+    {
+      "name": "Authentication",
+      "description": "Authentication endpoints (private mode only)"
+    }
+  ],
+  "paths": {
+    "/api/content/{slug}": {
+      "get": {
+        "tags": ["Content"],
+        "summary": "Get content by slug",
+        "description": "Retrieves parsed content for a given URL slug. Returns markdown as HTML or API spec as structured data.",
+        "operationId": "getContent",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "description": "URL path segments (e.g., 'guides/getting-started')",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Content retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Content not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/navigation": {
+      "get": {
+        "tags": ["Navigation"],
+        "summary": "Get navigation structure",
+        "description": "Returns the complete navigation structure including top nav and sidebar items.",
+        "operationId": "getNavigation",
+        "responses": {
+          "200": {
+            "description": "Navigation retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NavigationResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/request-otp": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Request OTP",
+        "description": "Sends a one-time password to the specified email address. Only works in private mode.",
+        "operationId": "requestOtp",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email"],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "user@example.com"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OTP sent successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Verification code sent to your email"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Email not in allowlist"
+          },
+          "429": {
+            "description": "Rate limited - too many requests"
+          }
+        }
+      }
+    },
+    "/api/auth/verify-otp": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Verify OTP",
+        "description": "Verifies the OTP and returns a JWT token on success.",
+        "operationId": "verifyOtp",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "code"],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "code": {
+                    "type": "string",
+                    "pattern": "^[0-9]{8}$",
+                    "example": "12345678"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authentication successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "token": {
+                      "type": "string",
+                      "description": "JWT token valid for 72 hours"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or expired OTP"
+          }
+        }
+      }
+    },
+    "/llms.txt": {
+      "get": {
+        "tags": ["Content"],
+        "summary": "Get LLM-optimized content",
+        "description": "Returns all documentation as a single plain text file optimized for LLM consumption. Strips all UI elements and formatting.",
+        "operationId": "getLlmsText",
+        "responses": {
+          "200": {
+            "description": "Plain text documentation",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ContentResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["markdown", "openapi", "postman"]
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "html": {
+            "type": "string",
+            "description": "Rendered HTML (for markdown)"
+          },
+          "toc": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TocItem"
+            }
+          },
+          "spec": {
+            "type": "object",
+            "description": "Parsed API spec (for openapi/postman)"
+          }
+        }
+      },
+      "TocItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "level": {
+            "type": "integer"
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TocItem"
+            }
+          }
+        }
+      },
+      "NavigationResponse": {
+        "type": "object",
+        "properties": {
+          "topNav": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TopNavItem"
+            }
+          },
+          "sidebar": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/SidebarItem"
+              }
+            }
+          }
+        }
+      },
+      "TopNavItem": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "isExternal": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SidebarItem": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["file", "folder"]
+          },
+          "order": {
+            "type": "integer"
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SidebarItem"
+            }
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "integer"
+          },
+          "statusMessage": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT token obtained from /api/auth/verify-otp"
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ]
+}

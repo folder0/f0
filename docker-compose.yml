@@ -1,0 +1,93 @@
+# =============================================================================
+# LITEDOCS - DOCKER COMPOSE (LOCAL DEVELOPMENT)
+# =============================================================================
+#
+# This file sets up LiteDocs for local development and testing.
+#
+# Usage:
+#   docker-compose up        # Start in foreground
+#   docker-compose up -d     # Start in background
+#   docker-compose down      # Stop and remove containers
+#   docker-compose logs -f   # Follow logs
+#
+# The content and private directories are mounted as volumes,
+# so changes will be reflected immediately.
+
+version: '3.8'
+
+services:
+  f0:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NUXT_PUBLIC_SITE_NAME: LiteDocs
+        NUXT_PUBLIC_SITE_DESCRIPTION: Documentation Platform
+    
+    ports:
+      - "3000:3000"
+    
+    # Mount content directories for live editing
+    volumes:
+      - ./content:/app/content:ro
+      - ./private:/app/private:ro
+    
+    # Environment variables
+    environment:
+      # Authentication mode: 'public' or 'private'
+      - AUTH_MODE=public
+      
+      # JWT secret (CHANGE IN PRODUCTION!)
+      - JWT_SECRET=dev-secret-change-in-production
+      
+      # AWS SES (required for private mode)
+      # - AWS_REGION=us-east-1
+      # - AWS_ACCESS_KEY_ID=your-access-key
+      # - AWS_SECRET_ACCESS_KEY=your-secret-key
+      # - EMAIL_FROM=no-reply@example.com
+      
+      # Site metadata
+      - NUXT_PUBLIC_SITE_NAME=LiteDocs
+      - NUXT_PUBLIC_SITE_DESCRIPTION=Documentation Platform
+      
+      # Google Analytics (optional)
+      # - NUXT_PUBLIC_GTAG_ID=G-XXXXXXXXXX
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+# =============================================================================
+# PRODUCTION DOCKER COMPOSE
+# =============================================================================
+# 
+# For production deployments (e.g., Coolify), create a docker-compose.prod.yml:
+#
+# version: '3.8'
+# services:
+#   f0:
+#     image: ghcr.io/your-org/f0:latest
+#     ports:
+#       - "3000:3000"
+#     volumes:
+#       - f0-content:/app/content
+#       - f0-private:/app/private
+#     environment:
+#       - AUTH_MODE=private
+#       - JWT_SECRET=${JWT_SECRET}
+#       - AWS_REGION=${AWS_REGION}
+#       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+#       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+#       - EMAIL_FROM=${EMAIL_FROM}
+#     restart: always
+#
+# volumes:
+#   f0-content:
+#   f0-private:

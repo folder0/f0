@@ -1,0 +1,59 @@
+# =============================================================================
+# LITEDOCS - GITIGNORE
+# =============================================================================
+
+# Dependencies
+node_modules/
+
+# Nuxt build outputs
+.nuxt/
+.output/
+dist/
+
+# Environment files (contain secrets!)
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Test coverage
+coverage/
+
+# TypeScript
+*.tsbuildinfo
+
+# Misc
+.cache/
+.temp/
+
+# =============================================================================
+# IMPORTANT: Keep these files
+# =============================================================================
+# 
+# DO commit:
+# - content/ (your documentation)
+# - private/allowlist.json (but review carefully!)
+# - .env.example (template only)
+# - docs/ (setup guides)
+#
+# DO NOT commit:
+# - .env (contains secrets)
+# - node_modules/
+# - .output/ (build artifacts)

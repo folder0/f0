@@ -1,0 +1,9 @@
+{
+  "emails": [
+    "admin@example.com",
+    "developer@example.com"
+  ],
+  "domains": [
+    "@yourcompany.com"
+  ]
+}
