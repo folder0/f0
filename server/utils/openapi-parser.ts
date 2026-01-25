@@ -24,6 +24,32 @@
 import { readFile } from 'fs/promises'
 
 // =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+/**
+ * Format a name for display by converting underscores to spaces
+ * and applying title case formatting
+ * 
+ * Examples:
+ * - "Transactions_monitoring" → "Transactions monitoring"
+ * - "user_authentication" → "User authentication"
+ */
+function formatDisplayName(name: string): string {
+  if (!name) return name
+  
+  // Replace underscores with spaces
+  let formatted = name.replace(/_/g, ' ')
+  
+  // Capitalize first letter if it's lowercase
+  if (formatted[0] && formatted[0] === formatted[0].toLowerCase()) {
+    formatted = formatted[0].toUpperCase() + formatted.slice(1)
+  }
+  
+  return formatted
+}
+
+// =============================================================================
 // MARKDOWN TO HTML CONVERTER (for descriptions)
 // =============================================================================
 
@@ -37,6 +63,7 @@ function markdownToHtml(text: string | undefined): string | undefined {
   let html = text
   
   // First, extract and protect code blocks (``` ... ```)
+  // Use placeholders without underscores to avoid markdown transformation
   const codeBlocks: string[] = []
   html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
     const index = codeBlocks.length
@@ -45,7 +72,7 @@ function markdownToHtml(text: string | undefined): string | undefined {
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
     codeBlocks.push(`<pre><code class="language-${lang || 'text'}">${escapedCode.trim()}</code></pre>`)
-    return `__CODE_BLOCK_${index}__`
+    return `%%CODEBLOCK${index}%%`
   })
   
   // Extract and protect inline code (` ... `)
@@ -57,7 +84,7 @@ function markdownToHtml(text: string | undefined): string | undefined {
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
     inlineCode.push(`<code>${escapedCode}</code>`)
-    return `__INLINE_CODE_${index}__`
+    return `%%INLINECODE${index}%%`
   })
   
   // Now escape remaining HTML special characters
@@ -100,7 +127,7 @@ function markdownToHtml(text: string | undefined): string | undefined {
       p = p.trim()
       // Don't wrap if it's already a block element or a placeholder
       if (p.startsWith('<h') || p.startsWith('<ul') || p.startsWith('<ol') || 
-          p.startsWith('<table') || p.startsWith('<li') || p.startsWith('__CODE_BLOCK_')) {
+          p.startsWith('<table') || p.startsWith('<li') || p.startsWith('%%CODEBLOCK')) {
         return p
       }
       // Don't wrap empty paragraphs
@@ -112,12 +139,12 @@ function markdownToHtml(text: string | undefined): string | undefined {
   
   // Restore code blocks
   codeBlocks.forEach((block, i) => {
-    html = html.replace(`__CODE_BLOCK_${i}__`, block)
+    html = html.replace(`%%CODEBLOCK${i}%%`, block)
   })
   
   // Restore inline code
   inlineCode.forEach((code, i) => {
-    html = html.replace(`__INLINE_CODE_${i}__`, code)
+    html = html.replace(`%%INLINECODE${i}%%`, code)
   })
   
   return html
@@ -505,7 +532,7 @@ function parseOpenApi(spec: Record<string, unknown>, rawSpec: string): ApiSpec {
   
   for (const [name, eps] of groupMap.entries()) {
     groups.push({
-      name,
+      name: formatDisplayName(name),
       description: markdownToHtml(tagDescriptions.get(name)),
       endpoints: eps,
     })
@@ -548,6 +575,7 @@ function parsePostman(collection: Record<string, unknown>, rawSpec: string): Api
       if (Array.isArray(i.item)) {
         // It's a folder - recurse
         const folderName = i.name as string || 'Folder'
+        const displayName = formatDisplayName(folderName)
         const { groups: subGroups, endpoints: subEndpoints } = processItems(
           i.item as unknown[],
           parentPath ? `${parentPath}/${folderName}` : folderName
@@ -556,7 +584,7 @@ function parsePostman(collection: Record<string, unknown>, rawSpec: string): Api
         // Add folder as a group with its endpoints
         if (subEndpoints.length > 0) {
           groups.push({
-            name: folderName,
+            name: displayName,
             description: markdownToHtml(i.description as string | undefined),
             endpoints: subEndpoints,
           })

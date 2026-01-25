@@ -32,6 +32,7 @@ import { appendFile } from 'fs/promises'
 import { existsSync, mkdirSync } from 'fs'
 import { dirname } from 'path'
 import type { H3Event } from 'h3'
+import { getHeader } from 'h3'
 
 // =============================================================================
 // TYPE DEFINITIONS

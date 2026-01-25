@@ -414,6 +414,22 @@ blockquote p:last-child {
   border-color: var(--color-success);
 }
 
+/* Alias types that map to existing styles */
+.callout-tip {
+  background-color: var(--color-success-bg);
+  border-color: var(--color-success);
+}
+
+.callout-note {
+  background-color: var(--color-info-bg);
+  border-color: var(--color-info);
+}
+
+.callout-danger {
+  background-color: var(--color-error-bg);
+  border-color: var(--color-error);
+}
+
 /* =============================================================================
    API ENDPOINT BLOCKS (for markdown documentation)
    ============================================================================= */

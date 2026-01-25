@@ -143,97 +143,93 @@ function remarkYouTube() {
 }
 
 /**
- * Remark plugin to handle callout/admonition syntax
+ * Pre-process markdown to convert callout syntax to HTML
+ * This runs BEFORE remark parsing to ensure callouts work with any content
  * 
- * Syntax (multi-line):
+ * Syntax:
  * :::info
- * 
- * This is an info callout
- * 
+ * Content with **bold**, `code`, etc.
+ * Multiple lines supported.
  * :::
  * 
- * Syntax (single paragraph - when lines run together):
- * :::info\nThis is an info callout\n:::
- * 
- * Supported types: info, warning, error, success
+ * Supported types: info, warning, error, success, tip, note, danger
+ */
+function preprocessCallouts(markdown: string): string {
+  // Match callout blocks: :::type followed by content followed by :::
+  // Use a regex that captures the type and content
+  const calloutRegex = /^:::(info|warning|error|success|tip|note|danger)\s*\n([\s\S]*?)\n:::\s*$/gm
+  
+  return markdown.replace(calloutRegex, (match, type, content) => {
+    // Normalize the type for CSS class
+    const normalizedType = type.toLowerCase()
+    
+    // Create a placeholder that will survive markdown parsing
+    // We use a special HTML comment format that we'll convert back later
+    const trimmedContent = content.trim()
+    
+    // Return HTML div that remark will pass through
+    return `<div class="callout callout-${normalizedType}">\n\n${trimmedContent}\n\n</div>`
+  })
+}
+
+/**
+ * Remark plugin to handle callout/admonition syntax (fallback for edge cases)
+ * Most callouts are handled by preprocessCallouts, this catches any remaining ones
  */
 function remarkCallouts() {
   return (tree: Root) => {
     visit(tree, 'paragraph', (node: Paragraph, index, parent) => {
       if (!parent || index === undefined) return
-      if (node.children.length !== 1 || node.children[0].type !== 'text') return
       
-      const text = (node.children[0] as Text).value
+      // Get the text content of first child to check for opening :::
+      const firstChild = node.children[0]
+      if (!firstChild || firstChild.type !== 'text') return
       
-      // Try to match single-paragraph callout (:::type\ncontent\n:::)
-      const singleMatch = text.match(/^:::(info|warning|error|success)\n([\s\S]*?)\n:::$/)
-      if (singleMatch) {
-        const [, calloutType, content] = singleMatch
-        
-        // @ts-expect-error - Adding custom node structure
-        parent.children[index] = {
-          type: 'callout',
-          data: {
-            hName: 'div',
-            hProperties: {
-              className: ['callout', `callout-${calloutType}`],
-            },
-          },
-          children: [{
-            type: 'paragraph',
-            children: [{
-              type: 'text',
-              value: content.trim(),
-            }],
-          }],
-        }
-        return
+      const text = firstChild.value
+      
+      // Check for single-paragraph callout that might have been missed
+      // Pattern: :::type content ::: all in one paragraph
+      const singleLineMatch = text.match(/^:::(info|warning|error|success|tip|note|danger)\s+/)
+      if (!singleLineMatch) return
+      
+      const calloutType = singleLineMatch[1]
+      
+      // Check if this paragraph ends with :::
+      const lastChild = node.children[node.children.length - 1]
+      let endsWithClose = false
+      
+      if (lastChild.type === 'text' && lastChild.value.trim().endsWith(':::')) {
+        endsWithClose = true
       }
       
-      // Check for callout opening (multi-paragraph variant)
-      const openMatch = text.match(/^:::(info|warning|error|success)\s*$/)
-      if (!openMatch) return
+      if (!endsWithClose) return
       
-      const calloutType = openMatch[1]
-      
-      // Find the closing :::
-      let endIndex = index + 1
-      const contentNodes: unknown[] = []
-      
-      while (endIndex < parent.children.length) {
-        const child = parent.children[endIndex]
-        
-        // Check for closing :::
-        if (
-          child.type === 'paragraph' &&
-          child.children.length === 1 &&
-          child.children[0].type === 'text' &&
-          (child.children[0] as Text).value.trim() === ':::'
-        ) {
-          break
-        }
-        
-        contentNodes.push(child)
-        endIndex++
+      // Remove the opening :::type from first text node
+      const newChildren = [...node.children]
+      if (newChildren[0].type === 'text') {
+        (newChildren[0] as Text).value = text.slice(singleLineMatch[0].length)
       }
       
-      // If we found a closing tag, transform the nodes
-      if (endIndex < parent.children.length) {
-        // Create callout wrapper
-        // @ts-expect-error - Adding custom node structure
-        const calloutNode = {
-          type: 'callout',
-          data: {
-            hName: 'div',
-            hProperties: {
-              className: ['callout', `callout-${calloutType}`],
-            },
+      // Remove the closing ::: from last text node
+      const lastIdx = newChildren.length - 1
+      if (newChildren[lastIdx].type === 'text') {
+        const lastText = (newChildren[lastIdx] as Text).value
+        (newChildren[lastIdx] as Text).value = lastText.replace(/\s*:::$/, '')
+      }
+      
+      // @ts-expect-error - Adding custom node structure
+      parent.children[index] = {
+        type: 'callout',
+        data: {
+          hName: 'div',
+          hProperties: {
+            className: ['callout', `callout-${calloutType}`],
           },
-          children: contentNodes,
-        }
-        
-        // Replace the range of nodes with our callout
-        parent.children.splice(index, endIndex - index + 1, calloutNode)
+        },
+        children: [{
+          type: 'paragraph',
+          children: newChildren,
+        }],
       }
     })
   }
@@ -579,8 +575,12 @@ export async function parseMarkdown(content: string): Promise<ParsedMarkdown> {
   // Extract frontmatter
   const { frontmatter, content: mdContent } = extractFrontmatter(content)
   
+  // Pre-process callouts before remark parsing
+  // This converts :::type ... ::: blocks to HTML divs
+  const preprocessedContent = preprocessCallouts(mdContent)
+  
   // Extract title from first H1 as fallback
-  const extractedTitle = extractTitle(mdContent)
+  const extractedTitle = extractTitle(preprocessedContent)
   
   // TOC will be populated by the rehype plugin
   const toc: TocItem[] = []
@@ -594,7 +594,7 @@ export async function parseMarkdown(content: string): Promise<ParsedMarkdown> {
       .use(remarkGfm)
       // Custom: YouTube embeds
       .use(remarkYouTube)
-      // Custom: Callout boxes
+      // Custom: Callout boxes (fallback for edge cases)
       .use(remarkCallouts)
       // Custom: API endpoint blocks
       .use(remarkApiEndpoints)
@@ -612,7 +612,7 @@ export async function parseMarkdown(content: string): Promise<ParsedMarkdown> {
       .use(rehypeStringify, { allowDangerousHtml: true })
     
     // Process the markdown
-    const result = await processor.process(mdContent)
+    const result = await processor.process(preprocessedContent)
     const html = String(result)
     
     // Generate plain text for LLM

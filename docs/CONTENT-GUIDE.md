@@ -219,14 +219,34 @@ You can include full markdown content inside the block, including code examples 
 ### Adding Images
 
 1. Place images in `content/assets/images/`
-2. Reference with relative or absolute paths
+2. Reference them using the `/api/content/assets/` path
 
 ```markdown
-<!-- Relative path -->
-![Alt text](./assets/images/diagram.png)
+<!-- From any markdown file -->
+![Integration Flow](/api/content/assets/images/integration-flow.png)
 
-<!-- Absolute path -->
-![Alt text](/assets/images/logo.svg)
+![Company Logo](/api/content/assets/images/logo.svg)
+```
+
+### Example
+
+If you have this file structure:
+```
+content/
+├── assets/
+│   └── images/
+│       └── integration-flow.png
+└── guides/
+    └── getting-started.md
+```
+
+In `getting-started.md`, reference the image like this:
+```markdown
+## Architecture
+
+Here's how the integration works:
+
+![Integration Flow](/api/content/assets/images/integration-flow.png)
 ```
 
 ### Image Best Practices
@@ -235,6 +255,7 @@ You can include full markdown content inside the block, including code examples 
 - Optimize images before uploading (compress, resize)
 - Prefer SVG for diagrams and icons
 - Use PNG for screenshots, JPG for photos
+- Keep images under 500KB when possible
 
 ## API Documentation
 
