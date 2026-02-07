@@ -27,7 +27,7 @@
 
 import { readFile } from 'fs/promises'
 import { resolve, basename } from 'path'
-import { resolveContentPath } from '../../utils/navigation'
+import { resolveContentPath } from '../../../utils/navigation'
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
