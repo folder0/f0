@@ -4,19 +4,7 @@
  * =============================================================================
  * 
  * Manages search state and provides search functionality.
- * 
- * USAGE:
- * ```vue
- * const { 
- *   isOpen, 
- *   query, 
- *   results, 
- *   isLoading,
- *   openSearch, 
- *   closeSearch, 
- *   search 
- * } = useSearch()
- * ```
+ * Keyboard shortcut (Cmd/Ctrl+K) is registered once globally.
  */
 
 interface SearchResult {
@@ -37,6 +25,9 @@ interface SearchState {
 // Debounce timer
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
 
+// Global listener flag — only register once per app lifetime
+let globalListenerRegistered = false
+
 export function useSearch() {
   const router = useRouter()
   
@@ -49,9 +40,6 @@ export function useSearch() {
     error: null,
   }))
   
-  /**
-   * Open search modal
-   */
   function openSearch() {
     state.value.isOpen = true
     state.value.query = ''
@@ -59,18 +47,12 @@ export function useSearch() {
     state.value.error = null
   }
   
-  /**
-   * Close search modal
-   */
   function closeSearch() {
     state.value.isOpen = false
     state.value.query = ''
     state.value.results = []
   }
   
-  /**
-   * Toggle search modal
-   */
   function toggleSearch() {
     if (state.value.isOpen) {
       closeSearch()
@@ -79,18 +61,13 @@ export function useSearch() {
     }
   }
   
-  /**
-   * Perform search with debouncing
-   */
   function search(query: string) {
     state.value.query = query
     
-    // Clear previous timeout
     if (searchTimeout) {
       clearTimeout(searchTimeout)
     }
     
-    // Don't search for very short queries
     if (query.trim().length < 2) {
       state.value.results = []
       state.value.isLoading = false
@@ -99,7 +76,6 @@ export function useSearch() {
     
     state.value.isLoading = true
     
-    // Debounce search
     searchTimeout = setTimeout(async () => {
       try {
         const response = await $fetch<{ results: SearchResult[] }>('/api/search', {
@@ -115,25 +91,27 @@ export function useSearch() {
       } finally {
         state.value.isLoading = false
       }
-    }, 200) // 200ms debounce
+    }, 200)
   }
   
-  /**
-   * Navigate to a search result
-   */
   function goToResult(result: SearchResult) {
     closeSearch()
     router.push(result.path)
   }
   
   /**
-   * Set up keyboard shortcuts
+   * Register global keyboard shortcuts — safe to call multiple times,
+   * only registers once per client session. No cleanup needed since
+   * the listener persists for the app lifetime.
    */
   function setupKeyboardShortcuts() {
     if (!import.meta.client) return
+    if (globalListenerRegistered) return
     
-    const handleKeydown = (e: KeyboardEvent) => {
-      // Cmd/Ctrl + K to open search
+    globalListenerRegistered = true
+    
+    window.addEventListener('keydown', (e: KeyboardEvent) => {
+      // Cmd/Ctrl + K to toggle search
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
         toggleSearch()
@@ -143,32 +121,20 @@ export function useSearch() {
       if (e.key === 'Escape' && state.value.isOpen) {
         closeSearch()
       }
-    }
-    
-    window.addEventListener('keydown', handleKeydown)
-    
-    // Cleanup
-    onUnmounted(() => {
-      window.removeEventListener('keydown', handleKeydown)
     })
   }
   
-  // Set up keyboard shortcuts on mount
+  // Auto-register on first client-side use
   if (import.meta.client) {
-    onMounted(() => {
-      setupKeyboardShortcuts()
-    })
+    setupKeyboardShortcuts()
   }
   
   return {
-    // State
     isOpen: computed(() => state.value.isOpen),
     query: computed(() => state.value.query),
     results: computed(() => state.value.results),
     isLoading: computed(() => state.value.isLoading),
     error: computed(() => state.value.error),
-    
-    // Methods
     openSearch,
     closeSearch,
     toggleSearch,

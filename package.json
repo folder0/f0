@@ -19,7 +19,6 @@
   },
   "dependencies": {
     "@aws-sdk/client-ses": "^3.525.0",
-    "@picocss/pico": "^2.0.6",
     "jsonwebtoken": "^9.0.2",
     "mermaid": "^11.4.0",
     "mrmime": "^2.0.0",

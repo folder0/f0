@@ -17,7 +17,7 @@
 -->
 
 <template>
-  <div class="layout" :data-theme="theme">
+  <div class="layout" :data-theme="theme" :class="{ 'sidebar-collapsed': sidebarIsCollapsed }">
     <!-- Header -->
     <LayoutHeader 
       @toggle-sidebar="sidebarOpen = !sidebarOpen"
@@ -37,11 +37,13 @@
       </div>
     </main>
     
-    <!-- Table of Contents (right sidebar) -->
-    <LayoutTableOfContents 
-      v-if="showToc"
-      :items="tocItems"
-    />
+    <!-- Table of Contents (right sidebar) — client-only to avoid hydration mismatch -->
+    <ClientOnly>
+      <LayoutTableOfContents 
+        v-if="showToc"
+        :items="tocItems"
+      />
+    </ClientOnly>
     
     <!-- Mobile sidebar overlay -->
     <div 
@@ -128,8 +130,14 @@ const { tocItems, showToc, clearToc } = useToc()
 // SEARCH
 // ---------------------------------------------------------------------------
 
-// Initialize search keyboard shortcuts
-const { setupKeyboardShortcuts } = useSearch()
+// Search shortcuts auto-register via composable when first used
+useSearch()
+
+// ---------------------------------------------------------------------------
+// SIDEBAR COLLAPSE (blog reading mode)
+// ---------------------------------------------------------------------------
+
+const { isCollapsed: sidebarIsCollapsed } = useSidebarCollapse()
 
 // ---------------------------------------------------------------------------
 // ROUTE CHANGE HANDLING
@@ -147,9 +155,6 @@ watch(() => route.path, () => {
 // ---------------------------------------------------------------------------
 
 onMounted(() => {
-  // Set up search shortcuts (Cmd/Ctrl+K)
-  setupKeyboardShortcuts()
-  
   const handleKeydown = (e: KeyboardEvent) => {
     // Escape closes sidebar
     if (e.key === 'Escape' && sidebarOpen.value) {

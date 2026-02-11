@@ -9,7 +9,7 @@
  * - SSR enabled for SEO and fast initial page loads
  * - Runtime config separates public (browser) vs private (server-only) env vars
  * - Nitro configured to protect /private directory from public access
- * - CSS uses Pico.css as base with custom Notion-like theme layer
+ * - CSS uses a custom theme with light/dark mode support
  * 
  * Environment Variables Required:
  * - AUTH_MODE: 'public' | 'private' (controls whether auth is required)
@@ -71,12 +71,11 @@ export default defineNuxtConfig({
   // ---------------------------------------------------------------------------
   // CSS CONFIGURATION
   // ---------------------------------------------------------------------------
-  // Load Pico.css first, then our custom overrides
+  // CSS stylesheets
   
   css: [
-    '@picocss/pico/css/pico.min.css',  // Semantic HTML styling base
-    '~/assets/css/main.css',             // Custom theme overrides
-    '~/assets/css/blog.css',             // Blog-specific styles (scoped to .blog-layout)
+    '~/assets/css/main.css',             // Core theme (light + dark mode)
+    '~/assets/css/blog.css',             // Blog-specific styles
   ],
 
   // ---------------------------------------------------------------------------
@@ -197,6 +196,17 @@ export default defineNuxtConfig({
       },
     },
   },
+
+  // ---------------------------------------------------------------------------
+  // COMPONENT AUTO-IMPORT
+  // ---------------------------------------------------------------------------
+  // Blog components use explicit Blog prefix in filenames (e.g. BlogIndex.vue)
+  // so we disable pathPrefix for that directory to avoid double-prefixing.
+  
+  components: [
+    { path: '~/components/blog', pathPrefix: false },
+    { path: '~/components' },
+  ],
 
   // ---------------------------------------------------------------------------
   // TYPESCRIPT CONFIGURATION

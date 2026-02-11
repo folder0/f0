@@ -34,6 +34,7 @@
           :key="tag"
           :to="`${basePath}?tag=${encodeURIComponent(tag)}`"
           class="tag-pill"
+          :class="tagColorClass(tag)"
         >
           {{ tag }}
         </NuxtLink>
@@ -87,6 +88,15 @@ const coverImageSrc = computed(() => {
   }
   return props.post.coverImage
 })
+
+function tagColorClass(tag: string): string {
+  let hash = 0
+  for (let i = 0; i < tag.length; i++) {
+    hash = ((hash << 5) - hash) + tag.charCodeAt(i)
+    hash = hash & hash
+  }
+  return `tag-color-${Math.abs(hash) % 10}`
+}
 
 function formatDate(dateStr: string): string {
   try {

@@ -7,7 +7,7 @@
   and pagination. Replaces the docs-style sidebar+content view.
   
   USAGE:
-  <BlogBlogIndex :path="'/blog'" />
+  <BlogIndex :path="'/blog'" />
 -->
 
 <template>
@@ -28,7 +28,7 @@
         <!-- Active tag filter -->
         <div v-if="activeTag" class="blog-tag-filter">
           <span class="blog-tag-filter-label">Filtered by:</span>
-          <span class="blog-active-tag">
+          <span class="blog-active-tag" :class="tagColorClass(activeTag)">
             {{ activeTag }}
             <button class="blog-active-tag-clear" @click="clearTag" aria-label="Clear filter">×</button>
           </span>
@@ -124,6 +124,15 @@ const { data, pending } = await useFetch<{
   },
   watch: [apiPath, currentPage, activeTag],
 })
+
+function tagColorClass(tag: string): string {
+  let hash = 0
+  for (let i = 0; i < tag.length; i++) {
+    hash = ((hash << 5) - hash) + tag.charCodeAt(i)
+    hash = hash & hash
+  }
+  return `tag-color-${Math.abs(hash) % 10}`
+}
 
 function goToPage(page: number) {
   const query: Record<string, string> = { page: String(page) }

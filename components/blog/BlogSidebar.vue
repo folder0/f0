@@ -9,11 +9,25 @@
   - Tag cloud
   
   USAGE:
-  <BlogBlogSidebar :path="'/blog'" />
+  <BlogSidebar :path="'/blog'" />
 -->
 
 <template>
   <div class="blog-sidebar">
+    <!-- Collapse toggle -->
+    <button
+      class="blog-sidebar-collapse-btn"
+      @click="toggleCollapse"
+      :title="isCollapsed ? 'Show sidebar' : 'Hide sidebar for reading mode'"
+      :aria-label="isCollapsed ? 'Show sidebar' : 'Hide sidebar'"
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="11 17 6 12 11 7" />
+        <polyline points="18 17 13 12 18 7" />
+      </svg>
+      <span class="blog-sidebar-collapse-text">Hide sidebar</span>
+    </button>
+
     <!-- All Posts -->
     <div class="blog-sidebar-section">
       <NuxtLink
@@ -51,7 +65,7 @@
           :key="tag.name"
           :to="`${blogPath}?tag=${encodeURIComponent(tag.name)}`"
           class="tag-pill"
-          :class="{ active: activeTag === tag.name }"
+          :class="[tagColorClass(tag.name), { active: activeTag === tag.name }]"
         >
           {{ tag.name }} ({{ tag.count }})
         </NuxtLink>
@@ -64,6 +78,8 @@
 const props = defineProps<{
   path?: string
 }>()
+
+const { isCollapsed, toggle: toggleCollapse } = useSidebarCollapse()
 
 const route = useRoute()
 const blogPath = computed(() => props.path || '/blog')
@@ -95,6 +111,15 @@ const recentPosts = computed(() => {
 const tags = computed(() => {
   return (data.value?.tags || []).slice(0, 15)
 })
+
+function tagColorClass(tag: string): string {
+  let hash = 0
+  for (let i = 0; i < tag.length; i++) {
+    hash = ((hash << 5) - hash) + tag.charCodeAt(i)
+    hash = hash & hash
+  }
+  return `tag-color-${Math.abs(hash) % 10}`
+}
 
 function formatShortDate(dateStr: string): string {
   try {

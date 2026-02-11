@@ -114,6 +114,12 @@ const { data: content, pending, error } = await useFetch<ContentResponse>(
   () => `/api/content/${slug.value}`,
   {
     watch: [slug],
+    // Suppress 404 console noise — blog directories legitimately 404 here
+    onResponseError({ response }) {
+      if (response.status !== 404) {
+        console.error('[f0] Content fetch error:', response.status)
+      }
+    },
   }
 )
 

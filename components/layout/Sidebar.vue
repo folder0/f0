@@ -15,7 +15,21 @@ PROPS:
 -->
 
 <template>
-  <aside class="sidebar" :class="{ open }">
+  <aside class="sidebar" :class="{ open, collapsed: isBlogSection && isCollapsed }">
+    <!-- Re-expand button (shown when collapsed) -->
+    <button
+      v-if="isBlogSection && isCollapsed"
+      class="sidebar-expand-btn"
+      @click="expand"
+      title="Show sidebar"
+      aria-label="Show sidebar"
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="13 17 18 12 13 7" />
+        <polyline points="6 17 11 12 6 7" />
+      </svg>
+    </button>
+
     <!-- Close button for mobile -->
     <button
       class="sidebar-close"
@@ -64,6 +78,9 @@ defineEmits(['close'])
 // Navigation
 const { currentSidebar, currentSection, loading, fetchNavigation } = useNavigation()
 
+// Sidebar collapse state (for blog reading mode)
+const { isCollapsed, expand } = useSidebarCollapse()
+
 // Route for detecting blog sections
 const route = useRoute()
 
@@ -77,6 +94,13 @@ const { data: blogSectionCheck } = await useFetch<{ config: { layout: string } }
 
 const isBlogSection = computed(() => {
   return blogSectionCheck.value?.config?.layout === 'blog'
+})
+
+// Reset collapsed state when leaving blog section
+watch(isBlogSection, (isBlog) => {
+  if (!isBlog) {
+    expand()
+  }
 })
 
 const blogSectionPath = computed(() => currentSection.value)
@@ -127,6 +151,39 @@ onMounted(() => {
   padding: var(--spacing-4) var(--spacing-6);
   color: var(--color-text-tertiary);
   font-size: var(--font-size-sm);
+}
+
+/* Collapsed state — thin bar with expand button */
+.sidebar.collapsed {
+  width: 40px;
+  min-width: 40px;
+  overflow: hidden;
+}
+
+.sidebar.collapsed .blog-sidebar,
+.sidebar.collapsed .sidebar-nav {
+  display: none;
+}
+
+.sidebar-expand-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: var(--spacing-2) auto;
+  background: none;
+  border: 1px solid var(--color-border-primary);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  color: var(--color-text-tertiary);
+  transition: all var(--transition-fast);
+}
+
+.sidebar-expand-btn:hover {
+  background-color: var(--color-bg-hover);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-secondary);
 }
 
 .sidebar-nav {

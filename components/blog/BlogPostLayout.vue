@@ -7,7 +7,7 @@
   and previous/next navigation.
   
   USAGE:
-  <BlogBlogPostLayout :content="contentResponse" />
+  <BlogPostLayout :content="contentResponse" />
 -->
 
 <template>
@@ -29,6 +29,7 @@
           :key="tag"
           :to="`${blogBasePath}?tag=${encodeURIComponent(tag)}`"
           class="tag-pill"
+          :class="tagColorClass(tag)"
         >
           {{ tag }}
         </NuxtLink>
@@ -47,10 +48,10 @@
       </div>
     </header>
     
-    <!-- Post body — same MarkdownRenderer as docs -->
+    <!-- Post body — same MarkdownRenderer as docs, but strip the H1 since we render our own header -->
     <div class="blog-post-body">
       <ContentMarkdownRenderer
-        :html="content.html || ''"
+        :html="bodyHtml"
         :toc="content.toc || []"
         :title="''"
         :markdown="content.markdown"
@@ -108,6 +109,21 @@ const blogBasePath = computed(() => {
     return '/' + segments[0]
   }
   return '/'
+})
+
+function tagColorClass(tag: string): string {
+  let hash = 0
+  for (let i = 0; i < tag.length; i++) {
+    hash = ((hash << 5) - hash) + tag.charCodeAt(i)
+    hash = hash & hash
+  }
+  return `tag-color-${Math.abs(hash) % 10}`
+}
+
+// Strip the first H1 from rendered HTML since PostLayout renders its own title header
+const bodyHtml = computed(() => {
+  const html = props.content.html || ''
+  return html.replace(/<h1[^>]*>.*?<\/h1>/, '')
 })
 
 // Cover image source

@@ -16,7 +16,7 @@
       :key="tag"
       :to="tagLink(tag)"
       class="tag-pill"
-      :class="{ active: activeTag === tag }"
+      :class="[tagColorClass(tag), { active: activeTag === tag }]"
     >
       {{ tag }}
     </NuxtLink>
@@ -33,6 +33,15 @@ const props = defineProps<{
 function tagLink(tag: string): string {
   const base = props.basePath || '/blog'
   return `${base}?tag=${encodeURIComponent(tag)}`
+}
+
+function tagColorClass(tag: string): string {
+  let hash = 0
+  for (let i = 0; i < tag.length; i++) {
+    hash = ((hash << 5) - hash) + tag.charCodeAt(i)
+    hash = hash & hash // Convert to 32bit integer
+  }
+  return `tag-color-${Math.abs(hash) % 10}`
 }
 </script>
 

@@ -81,6 +81,7 @@
   --color-text-primary: #1a1a1a;
   --color-text-secondary: #6b7280;
   --color-text-tertiary: #9ca3af;
+  --color-text-muted: #b0b0b0;
   --color-text-link: #2563eb;
   --color-text-link-hover: #1d4ed8;
   
@@ -119,6 +120,7 @@
   --color-text-primary: #ececec;
   --color-text-secondary: #a1a1a1;
   --color-text-tertiary: #737373;
+  --color-text-muted: #5a5a5a;
   --color-text-link: #60a5fa;
   --color-text-link-hover: #93c5fd;
   
@@ -140,18 +142,8 @@
 }
 
 /* =============================================================================
-   BASE STYLES & PICO OVERRIDES
+   BASE STYLES
    ============================================================================= */
-
-/* Override Pico's default font and colors */
-:root {
-  --pico-font-family: var(--font-family-sans);
-  --pico-font-size: var(--font-size-base);
-  --pico-line-height: var(--line-height-relaxed);
-  --pico-background-color: var(--color-bg-primary);
-  --pico-color: var(--color-text-primary);
-  --pico-primary: var(--color-accent);
-}
 
 html {
   scroll-behavior: smooth;
@@ -810,6 +802,17 @@ figcaption {
   margin: 0 auto;
 }
 
+/* Sidebar collapsed — reading mode */
+.sidebar-collapsed .main-content {
+  margin-left: 40px;
+  max-width: calc(100% - 40px - var(--toc-width));
+  transition: margin-left 0.2s ease, max-width 0.2s ease;
+}
+
+.sidebar-collapsed .sidebar {
+  transition: width 0.2s ease;
+}
+
 /* Table of Contents (right sidebar) */
 .toc {
   position: fixed;
@@ -1321,21 +1324,10 @@ button,
 }
 
 /* =============================================================================
-   PICO CSS OVERRIDES
+   BASE OVERRIDES
    ============================================================================= */
 
-/* Override Pico's document backgrounds */
-:root {
-  --pico-background-color: var(--color-bg-primary);
-  --pico-color: var(--color-text-primary);
-}
-
-[data-theme="dark"] {
-  --pico-background-color: var(--color-bg-primary);
-  --pico-color: var(--color-text-primary);
-}
-
-/* Ensure our backgrounds are used */
+/* Ensure consistent backgrounds */
 body {
   background-color: var(--color-bg-primary) !important;
   color: var(--color-text-primary) !important;
