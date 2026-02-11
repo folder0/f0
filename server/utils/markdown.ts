@@ -248,6 +248,166 @@ function remarkCallouts() {
  * 
  * Supported methods: GET, POST, PUT, PATCH, DELETE
  */
+// =============================================================================
+// EMBED PROVIDERS (Phase 2.2)
+// =============================================================================
+
+/**
+ * Embed provider handlers. Each returns the HTML for a specific platform.
+ * Unknown URLs get a styled link card.
+ */
+
+interface EmbedResult {
+  html: string
+  plainText: string // For /llms.txt output
+}
+
+function youtubeEmbed(url: string, title: string): EmbedResult {
+  // Extract video ID from various YouTube URL formats
+  let videoId = ''
+  try {
+    const parsed = new URL(url)
+    if (parsed.hostname === 'youtu.be') {
+      videoId = parsed.pathname.slice(1)
+    } else {
+      videoId = parsed.searchParams.get('v') || ''
+    }
+  } catch {
+    // Try extracting from URL string directly
+    const match = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/)
+    videoId = match?.[1] || ''
+  }
+
+  if (!videoId) return linkCardEmbed(url, title)
+
+  return {
+    html: `<div class="embed-container embed-youtube"><iframe src="https://www.youtube.com/embed/${escapeHtml(videoId)}" title="${escapeHtml(title || 'YouTube Video')}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe></div>`,
+    plainText: `[YouTube Video: ${title || 'Untitled'}](${url})`,
+  }
+}
+
+function loomEmbed(url: string, title: string): EmbedResult {
+  // Extract share ID from Loom URL
+  let shareId = ''
+  try {
+    const parsed = new URL(url)
+    const pathParts = parsed.pathname.split('/')
+    shareId = pathParts[pathParts.length - 1] || ''
+  } catch {}
+
+  if (!shareId) return linkCardEmbed(url, title)
+
+  return {
+    html: `<div class="embed-container embed-loom"><iframe src="https://www.loom.com/embed/${escapeHtml(shareId)}" title="${escapeHtml(title || 'Loom Video')}" frameborder="0" allow="autoplay; fullscreen" allowfullscreen loading="lazy"></iframe></div>`,
+    plainText: `[Loom Video: ${title || 'Untitled'}](${url})`,
+  }
+}
+
+function figmaEmbed(url: string, title: string): EmbedResult {
+  const encodedUrl = encodeURIComponent(url)
+  return {
+    html: `<div class="embed-container embed-figma"><iframe src="https://www.figma.com/embed?embed_host=f0&url=${encodedUrl}" title="${escapeHtml(title || 'Figma Design')}" allowfullscreen loading="lazy"></iframe></div>`,
+    plainText: `[Figma Design: ${title || 'Untitled'}](${url})`,
+  }
+}
+
+function gistEmbed(url: string, title: string): EmbedResult {
+  // GitHub Gists can't be server-side rendered via iframe easily.
+  // Provide a styled link card with a direct link.
+  return {
+    html: `<div class="embed-card embed-gist"><div class="embed-card-icon"><svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M1.75 1.5a.25.25 0 00-.25.25v12.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25V1.75a.25.25 0 00-.25-.25H1.75zM0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0114.25 16H1.75A1.75 1.75 0 010 14.25V1.75z"></path></svg></div><div class="embed-card-body"><div class="embed-card-title">${escapeHtml(title || 'GitHub Gist')}</div><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="embed-card-url">${escapeHtml(url)} ↗</a></div></div>`,
+    plainText: `[GitHub Gist: ${title || 'Untitled'}](${url})`,
+  }
+}
+
+function linkCardEmbed(url: string, title: string): EmbedResult {
+  // Generic link card for unknown embed providers
+  let hostname = ''
+  try { hostname = new URL(url).hostname } catch {}
+
+  return {
+    html: `<div class="embed-card"><div class="embed-card-body"><div class="embed-card-title">${escapeHtml(title || hostname || 'External Content')}</div><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="embed-card-url">${escapeHtml(url)} ↗</a></div></div>`,
+    plainText: `[${title || hostname || 'Link'}](${url})`,
+  }
+}
+
+/**
+ * Map domain names to embed handlers.
+ */
+const embedProviders: Record<string, (url: string, title: string) => EmbedResult> = {
+  'youtube.com': youtubeEmbed,
+  'www.youtube.com': youtubeEmbed,
+  'youtu.be': youtubeEmbed,
+  'loom.com': loomEmbed,
+  'www.loom.com': loomEmbed,
+  'figma.com': figmaEmbed,
+  'www.figma.com': figmaEmbed,
+  'gist.github.com': gistEmbed,
+}
+
+function resolveEmbedProvider(url: string): ((url: string, title: string) => EmbedResult) {
+  try {
+    const hostname = new URL(url).hostname
+    return embedProviders[hostname] || linkCardEmbed
+  } catch {
+    return linkCardEmbed
+  }
+}
+
+// =============================================================================
+// EMBED REMARK PLUGIN (Phase 2.2)
+// =============================================================================
+
+/**
+ * Pre-process markdown to convert embed and mermaid directives.
+ * Runs BEFORE remark parsing.
+ * 
+ * Supported syntax:
+ *   ::embed[Display Title]{url=https://www.loom.com/share/abc123}
+ *   ::mermaid
+ *   graph TD
+ *     A[Start] --> B[Process]
+ *   ::
+ */
+function preprocessEmbeds(markdown: string): string {
+  // Handle ::embed[Title]{url=URL}
+  const embedRegex = /^::embed\[([^\]]*)\]\{url=([^}]+)\}\s*$/gm
+  markdown = markdown.replace(embedRegex, (_match, title, url) => {
+    const provider = resolveEmbedProvider(url)
+    const result = provider(url, title)
+    return result.html
+  })
+
+  // Handle ::mermaid ... ::
+  // Render as a code block with language-mermaid class for optional client-side rendering.
+  // The /llms.txt output preserves the mermaid source.
+  const mermaidRegex = /^::mermaid\s*\n([\s\S]*?)\n::\s*$/gm
+  markdown = markdown.replace(mermaidRegex, (_match, content) => {
+    const trimmed = content.trim()
+    return `<div class="mermaid-container"><pre class="mermaid">${escapeHtml(trimmed)}</pre></div>`
+  })
+
+  return markdown
+}
+
+/**
+ * Extract embed plain text references for /llms.txt output.
+ * Call this during markdownToPlainText to convert embeds to text references.
+ */
+function stripEmbedsToPlainText(text: string): string {
+  // Convert ::embed directives to plain text links
+  text = text.replace(/^::embed\[([^\]]*)\]\{url=([^}]+)\}\s*$/gm, (_match, title, url) => {
+    return `[${title || 'Embedded Content'}](${url})`
+  })
+
+  // Preserve mermaid source for LLMs
+  text = text.replace(/^::mermaid\s*\n([\s\S]*?)\n::\s*$/gm, (_match, content) => {
+    return `[Mermaid Diagram]\n${content.trim()}`
+  })
+
+  return text
+}
+
 function remarkApiEndpoints() {
   return (tree: Root) => {
     visit(tree, 'paragraph', (node: Paragraph, index, parent) => {
@@ -646,6 +806,9 @@ export function markdownToPlainText(content: string): string {
     '[Video: $1 - https://youtube.com/watch?v=$2]'
   )
   
+  // Convert ::embed and ::mermaid directives to plain text (Phase 2.2)
+  text = stripEmbedsToPlainText(text)
+  
   // Convert callouts to plain text (keep content, remove markers)
   text = text.replace(/:::(info|warning|error|success)\s*/g, '')
   text = text.replace(/:::\s*/g, '')
@@ -699,7 +862,7 @@ export async function parseMarkdown(content: string): Promise<ParsedMarkdown> {
   
   // Pre-process callouts before remark parsing
   // This converts :::type ... ::: blocks to HTML divs
-  const preprocessedContent = preprocessCallouts(mdContent)
+  const preprocessedContent = preprocessEmbeds(preprocessCallouts(mdContent))
   
   // Extract title from first H1 as fallback
   const extractedTitle = extractTitle(preprocessedContent)

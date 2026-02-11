@@ -11,7 +11,11 @@
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "lint": "eslint .",
-    "typecheck": "nuxt typecheck"
+    "typecheck": "nuxt typecheck",
+    "validate": "node bin/validate.mjs"
+  },
+  "bin": {
+    "f0": "./bin/validate.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-ses": "^3.525.0",

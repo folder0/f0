@@ -29,6 +29,7 @@ import { stat, readFile } from 'fs/promises'
 import { resolve } from 'path'
 import { parseMarkdownSafe, type ParsedMarkdown } from './markdown'
 import { logger } from './logger'
+import { validateAndLogAssets } from './asset-validator'
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -104,6 +105,15 @@ export async function getCachedContent(filePath: string): Promise<CacheEntry> {
   cacheMisses++
   const rawMarkdown = await readFile(absPath, 'utf-8')
   const parsed = await parseMarkdownSafe(rawMarkdown, absPath)
+
+  // 4. Validate image references (Phase 2.3)
+  try {
+    const config = useRuntimeConfig()
+    const contentDir = resolve(process.cwd(), config.contentDir || './content')
+    validateAndLogAssets(rawMarkdown, absPath, contentDir)
+  } catch {
+    // Validation is non-blocking — skip if config not available
+  }
 
   const entry: CacheEntry = {
     html: parsed.html,
