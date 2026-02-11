@@ -3,25 +3,21 @@
  * F0 - /llms.txt ROUTE
  * =============================================================================
  * 
- * GET /llms.txt
+ * GET /llms.txt                        → Full site documentation
+ * GET /llms.txt?section=guides         → Only /guides content
+ * GET /llms.txt?section=api            → Only /api content
+ * GET /llms.txt?section=guides/auth    → Only /guides/auth subtree
  * 
- * Returns the complete documentation in a plain text format optimized for
- * LLM/AI agent ingestion. This is the "AI-first" part of the tri-brid
- * rendering strategy.
+ * Returns documentation in plain text optimized for LLM/AI agent ingestion.
+ * Section filtering allows agents to fetch only what they need, keeping
+ * within context window limits.
  * 
  * CONSTRAINT COMPLIANCE:
  * - C-AI-LLMS-NO-UI-NOISE-004: No navigation, styling, or UI chrome
  * - C-AI-TRIBRID-CONSISTENCY-003: Same source, different render
  * 
- * OUTPUT FORMAT:
- * - Plain text (text/plain)
- * - Hierarchical structure with clear separators
- * - Source file paths for traceability
- * - No HTML, CSS, or JavaScript
- * 
  * CACHING:
- * - 1 hour cache (configured in nuxt.config.ts routeRules)
- * - Invalidated when content changes
+ * - Full site and per-section caching via content hash invalidation
  */
 
 import { getCachedLlmsTxt } from '../utils/llms-cache'
@@ -29,15 +25,21 @@ import { logger } from '../utils/logger'
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
+  const query = getQuery(event)
+  
+  // Parse section filter
+  const sectionParam = query.section as string | undefined
+  const sections = sectionParam
+    ? [sectionParam.startsWith('/') ? sectionParam : `/${sectionParam}`]
+    : []
   
   try {
-    // Serve from cache — regenerates only when content hash changes
     const llmText = await getCachedLlmsTxt(
       config.contentDir,
-      config.public.siteName
+      config.public.siteName,
+      sections.length > 0 ? { sections } : {}
     )
     
-    // Set content type to plain text
     setHeader(event, 'Content-Type', 'text/plain; charset=utf-8')
     setHeader(event, 'Cache-Control', 'public, max-age=3600')
     
@@ -46,6 +48,7 @@ export default defineEventHandler(async (event) => {
   } catch (error) {
     logger.error('Failed to generate /llms.txt', {
       error: error instanceof Error ? error.message : String(error),
+      section: sectionParam,
     })
     
     setHeader(event, 'Content-Type', 'text/plain; charset=utf-8')

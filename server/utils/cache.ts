@@ -26,6 +26,7 @@
  */
 
 import { stat, readFile } from 'fs/promises'
+import { resolve } from 'path'
 import { parseMarkdownSafe, type ParsedMarkdown } from './markdown'
 import { logger } from './logger'
 
@@ -85,13 +86,15 @@ let cacheMisses = 0
  */
 export async function getCachedContent(filePath: string): Promise<CacheEntry> {
   const startTime = performance.now()
+  // Normalize to absolute path for consistent cache keys
+  const absPath = resolve(filePath)
 
   // 1. Stat the file for current mtime
-  const fileStats = await stat(filePath)
+  const fileStats = await stat(absPath)
   const currentMtime = fileStats.mtimeMs
 
   // 2. Check cache
-  const cached = contentCache.get(filePath)
+  const cached = contentCache.get(absPath)
   if (cached && cached.mtime === currentMtime) {
     cacheHits++
     return cached
@@ -99,8 +102,8 @@ export async function getCachedContent(filePath: string): Promise<CacheEntry> {
 
   // 3. Cache miss — read and parse
   cacheMisses++
-  const rawMarkdown = await readFile(filePath, 'utf-8')
-  const parsed = await parseMarkdownSafe(rawMarkdown, filePath)
+  const rawMarkdown = await readFile(absPath, 'utf-8')
+  const parsed = await parseMarkdownSafe(rawMarkdown, absPath)
 
   const entry: CacheEntry = {
     html: parsed.html,
@@ -113,7 +116,7 @@ export async function getCachedContent(filePath: string): Promise<CacheEntry> {
     parsedAt: Date.now(),
   }
 
-  contentCache.set(filePath, entry)
+  contentCache.set(absPath, entry)
 
   const duration = Math.round(performance.now() - startTime)
   logger.info('Content parsed (cache miss)', { path: filePath, duration })
@@ -126,7 +129,7 @@ export async function getCachedContent(filePath: string): Promise<CacheEntry> {
  * Called when a file is known to have changed (e.g., webhook, upload).
  */
 export function invalidateCacheEntry(filePath: string): void {
-  contentCache.delete(filePath)
+  contentCache.delete(resolve(filePath))
 }
 
 /**

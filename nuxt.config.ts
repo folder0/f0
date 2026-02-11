@@ -64,6 +64,7 @@ export default defineNuxtConfig({
       // Site metadata
       siteName: process.env.NUXT_PUBLIC_SITE_NAME || 'f0',
       siteDescription: process.env.NUXT_PUBLIC_SITE_DESCRIPTION || 'Documentation',
+      siteUrl: process.env.NUXT_PUBLIC_SITE_URL || '',
     }
   },
 
@@ -156,6 +157,22 @@ export default defineNuxtConfig({
           'cache-control': 'public, max-age=3600',
           'content-type': 'text/plain; charset=utf-8'
         } 
+      },
+      
+      // llms-index.txt - same caching as llms.txt
+      '/llms-index.txt': {
+        headers: {
+          'cache-control': 'public, max-age=3600',
+          'content-type': 'text/plain; charset=utf-8'
+        }
+      },
+      
+      // Sitemap - moderate cache
+      '/sitemap.xml': {
+        headers: {
+          'cache-control': 'public, max-age=3600',
+          'content-type': 'application/xml; charset=utf-8'
+        }
       },
       
       // RSS feed - moderate cache
