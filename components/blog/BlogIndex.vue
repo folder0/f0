@@ -1,13 +1,6 @@
 <!--
-  =============================================================================
-  F0 - BLOG INDEX COMPONENT
-  =============================================================================
-  
-  The blog post listing page with header, post cards, tag filtering,
-  and pagination. Replaces the docs-style sidebar+content view.
-  
-  USAGE:
-  <BlogIndex :path="'/blog'" />
+  F0 - BLOG INDEX
+  Post listing with header, cards, tag filtering, pagination.
 -->
 
 <template>
@@ -15,34 +8,33 @@
     <!-- Loading -->
     <div v-if="pending" class="loading">
       <div class="loading-spinner" />
-      <p>Loading posts...</p>
     </div>
-    
+
     <!-- Content -->
     <div v-else-if="data">
       <!-- Blog Header -->
       <header class="blog-header">
         <h1>{{ data.config.title || 'Blog' }}</h1>
         <p v-if="data.config.description">{{ data.config.description }}</p>
-        
+
         <!-- Active tag filter -->
         <div v-if="activeTag" class="blog-tag-filter">
-          <span class="blog-tag-filter-label">Filtered by:</span>
-          <span class="blog-active-tag" :class="tagColorClass(activeTag)">
+          <span class="blog-tag-filter-label">Filtered by</span>
+          <span class="blog-active-tag tag-pill" :class="tagColorClass(activeTag)">
             {{ activeTag }}
-            <button class="blog-active-tag-clear" @click="clearTag" aria-label="Clear filter">×</button>
+            <button class="blog-active-tag-clear" @click="clearTag" aria-label="Clear filter">&times;</button>
           </span>
         </div>
       </header>
-      
+
       <!-- Empty state -->
       <div v-if="data.posts.length === 0" class="blog-empty">
         <h2>No posts found</h2>
         <p v-if="activeTag">No posts tagged "{{ activeTag }}". <NuxtLink :to="blogPath">View all posts</NuxtLink></p>
         <p v-else>No blog posts yet. Add markdown files to get started.</p>
       </div>
-      
-      <!-- Post Grid -->
+
+      <!-- Post List -->
       <div v-else class="blog-post-grid">
         <BlogPostCard
           v-for="post in data.posts"
@@ -52,21 +44,16 @@
           :dateFormat="data.config.dateFormat"
         />
       </div>
-      
+
       <!-- Pagination -->
       <BlogPagination
+        v-if="data.pagination.totalPages > 1"
         :currentPage="data.pagination.currentPage"
         :totalPages="data.pagination.totalPages"
         @page-change="goToPage"
       />
-      
-      <!-- Tag Cloud (below posts on index) -->
-      <div v-if="data.tags.length > 0 && !activeTag" class="blog-tag-filter" style="margin-top: var(--spacing-6);">
-        <span class="blog-tag-filter-label">Tags:</span>
-        <BlogTagPills :tags="data.tags.map(t => t.name)" :basePath="blogPath" />
-      </div>
     </div>
-    
+
     <!-- Error -->
     <div v-else class="blog-empty">
       <h2>Error loading blog</h2>
@@ -88,7 +75,6 @@ const apiPath = computed(() => blogPath.value.replace(/^\//, ''))
 const activeTag = computed(() => (route.query.tag as string) || '')
 const currentPage = computed(() => parseInt(route.query.page as string) || 1)
 
-// Fetch blog posts
 const { data, pending } = await useFetch<{
   config: {
     layout: string
@@ -144,7 +130,6 @@ function clearTag() {
   router.push({ path: blogPath.value })
 }
 
-// SEO
 useSeo({
   title: data.value?.config.title || 'Blog',
   description: data.value?.config.description,
@@ -154,21 +139,18 @@ useSeo({
 <style scoped>
 .loading {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
   min-height: 300px;
-  gap: var(--spacing-4);
-  color: var(--color-text-secondary);
 }
 
 .loading-spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid var(--color-border-primary);
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--color-border-primary);
   border-top-color: var(--color-accent);
   border-radius: 50%;
-  animation: spin 1s linear infinite;
+  animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin {

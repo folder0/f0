@@ -802,6 +802,12 @@ figcaption {
   margin: 0 auto;
 }
 
+/* Blog pages manage their own max-width */
+.content-wrapper:has(.blog-layout),
+.content-wrapper:has(.blog-post-layout) {
+  max-width: 100%;
+}
+
 /* Sidebar collapsed — reading mode */
 .sidebar-collapsed .main-content {
   margin-left: 40px;
