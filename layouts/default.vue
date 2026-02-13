@@ -35,6 +35,28 @@
       <div class="content-wrapper">
         <slot />
       </div>
+
+      <!-- Footer (from _brand.md) — inside main-content so it sits below content -->
+      <footer v-if="brand?.footerText || (brand?.footerLinks && brand.footerLinks.length > 0)" class="site-footer">
+        <div class="footer-content">
+          <span v-if="brand.footerText" class="footer-text">{{ brand.footerText }}</span>
+          <nav v-if="brand.footerLinks && brand.footerLinks.length > 0" class="footer-links">
+            <template v-for="link in brand.footerLinks" :key="link.url">
+              <a
+                v-if="isExternalLink(link.url)"
+                :href="link.url"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {{ link.label }}
+              </a>
+              <NuxtLink v-else :to="link.url">
+                {{ link.label }}
+              </NuxtLink>
+            </template>
+          </nav>
+        </div>
+      </footer>
     </main>
     
     <!-- Table of Contents (right sidebar) — client-only to avoid hydration mismatch -->
@@ -51,22 +73,6 @@
       class="sidebar-overlay"
       @click="sidebarOpen = false"
     />
-    
-    <!-- Footer (from _brand.md) -->
-    <footer v-if="brand?.footerText || (brand?.footerLinks && brand.footerLinks.length > 0)" class="site-footer">
-      <div class="footer-content">
-        <span v-if="brand.footerText" class="footer-text">{{ brand.footerText }}</span>
-        <nav v-if="brand.footerLinks && brand.footerLinks.length > 0" class="footer-links">
-          <NuxtLink
-            v-for="link in brand.footerLinks"
-            :key="link.url"
-            :to="link.url"
-          >
-            {{ link.label }}
-          </NuxtLink>
-        </nav>
-      </div>
-    </footer>
     
     <!-- Search Modal (Command Palette) -->
     <LayoutSearchModal />
@@ -113,6 +119,11 @@ useHead(computed(() => {
   
   return head
 }))
+
+// Helper for external links in footer
+function isExternalLink(url: string): boolean {
+  return url.startsWith('http://') || url.startsWith('https://')
+}
 
 // ---------------------------------------------------------------------------
 // THEME
@@ -186,11 +197,10 @@ onMounted(() => {
   }
 }
 
-/* Footer */
+/* Footer — now inside main-content, sits at bottom */
 .site-footer {
-  grid-column: 2;
   border-top: 1px solid var(--color-border-primary);
-  padding: var(--spacing-6) var(--spacing-8);
+  padding: var(--spacing-6) 0;
   margin-top: var(--spacing-12);
 }
 
@@ -228,8 +238,7 @@ onMounted(() => {
 
 @media (max-width: 768px) {
   .site-footer {
-    grid-column: 1;
-    padding: var(--spacing-4);
+    padding: var(--spacing-4) 0;
   }
   
   .footer-content {
