@@ -16,7 +16,8 @@
     "test": "vitest run",
     "test:contract": "vitest run --config vitest.contract.config.ts",
     "fleet": "node bin/f0-fleet.mjs",
-    "census": "node bin/f0-census.mjs"
+    "census": "node bin/f0-census.mjs",
+    "token": "node bin/f0-token.mjs"
   },
   "bin": {
     "f0": "./bin/validate.mjs"

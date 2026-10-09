@@ -38,6 +38,7 @@ import { isSessionRevoked } from '../utils/sessions'
 import { markPrivateResponse } from '../utils/http-cache'
 import { logger } from '../utils/logger'
 import { f0Config } from '../utils/f0-config'
+import { findAccessToken, isAccessToken } from '../utils/access-tokens'
 
 // =============================================================================
 // CONFIGURATION
@@ -170,11 +171,13 @@ export default defineEventHandler(async (event) => {
   }
 
   let token: string | null = null
+  let fromHeader = false
 
   // Try Authorization header first (Bearer token)
   const authHeader = getHeader(event, 'authorization')
   if (authHeader?.startsWith('Bearer ')) {
     token = authHeader.slice(7)
+    fromHeader = true
   }
 
   // Fall back to cookie
@@ -193,29 +196,45 @@ export default defineEventHandler(async (event) => {
     return deny('Authentication required')
   }
 
-  // Verify signature and expiry
-  const result = verifyToken(token)
+  // Personal access tokens (private/tokens.json), for tools and agents. Header
+  // only: a browser session is always the cookie.
+  let email: string
+  let jti: string | undefined
+  if (fromHeader && isAccessToken(token)) {
+    const record = await findAccessToken(token, settings.privateDir)
+    if (!record) {
+      await auditLog(event, 'token_invalid', 'unknown', false, 'unknown_access_token', { path, method: event.method })
+      return deny('Invalid or expired access token', undefined, 'invalid')
+    }
+    email = record.email
+  }
+  else {
+    // Verify signature and expiry
+    const result = verifyToken(token)
 
-  if (!result.valid || !result.payload?.email) {
-    deleteCookie(event, 'f0_token', { path: '/' })
-    await auditLog(
-      event,
-      result.error === 'expired' ? 'token_expired' : 'token_invalid',
-      result.payload?.email || 'unknown',
-      false,
-      result.error || 'missing_email',
-      { path, method: event.method }
-    )
-    return deny(
-      result.error === 'expired' ? 'Session expired, please log in again' : 'Invalid authentication token',
-      'expired',
-      result.error,
-    )
+    if (!result.valid || !result.payload?.email) {
+      deleteCookie(event, 'f0_token', { path: '/' })
+      await auditLog(
+        event,
+        result.error === 'expired' ? 'token_expired' : 'token_invalid',
+        result.payload?.email || 'unknown',
+        false,
+        result.error || 'missing_email',
+        { path, method: event.method }
+      )
+      return deny(
+        result.error === 'expired' ? 'Session expired, please log in again' : 'Invalid authentication token',
+        'expired',
+        result.error,
+      )
+    }
+
+    email = result.payload.email
+    jti = result.payload.jti
   }
 
   // A signed token is not enough: logged-out sessions and users removed from
   // the allowlist lose access immediately, not when the 72h token expires.
-  const { email, jti } = result.payload
   const revoked = await isSessionRevoked(jti)
   const access = revoked ? 'denied' : await checkEmailAccess(email, settings.privateDir)
 
