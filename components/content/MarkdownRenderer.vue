@@ -53,6 +53,9 @@ PROPS:
       v-html="html"
     />
 
+    <!-- _partials/doc-footer.md or post-footer.md (nearest folder) -->
+    <div v-if="footerHtml" class="f0-partial f0-page-partial" v-html="footerHtml" />
+
     <!-- Edit link and previous/next pages, in sidebar order -->
     <footer v-if="chrome && (chrome.prev || chrome.next || chrome.editUrl)" class="f0-page-footer">
       <a
@@ -86,6 +89,8 @@ const props = defineProps<{
   title?: string
   markdown?: string
   path?: string
+  /** Rendered _partials/doc-footer.md or post-footer.md */
+  footerHtml?: string
   chrome?: {
     breadcrumbs: { title: string, path: string | null }[]
     prev: { title: string, path: string | null } | null
@@ -333,6 +338,22 @@ watch(() => props.html, () => {
 
 .f0-breadcrumbs [aria-current='page'] {
   color: var(--color-text-primary);
+}
+
+.f0-page-partial {
+  margin-top: var(--spacing-10, 2.5rem);
+  padding: var(--spacing-5, 1.25rem);
+  border: 1px solid var(--color-border-primary);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+}
+
+.f0-page-partial :deep(> :first-child) {
+  margin-top: 0;
+}
+
+.f0-page-partial :deep(> :last-child) {
+  margin-bottom: 0;
 }
 
 .f0-page-footer {

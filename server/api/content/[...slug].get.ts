@@ -30,6 +30,7 @@ import { f0Config } from '../../utils/f0-config'
 import { fileToUrlPath, isDraft, resolveAssetUrl } from '../../utils/content-core'
 import { pageChrome } from '../../utils/page-chrome'
 import { listBlogPosts } from '../../utils/blog'
+import { pagePartial } from '../../utils/partials'
 
 export default defineEventHandler(async (event) => {
   const settings = f0Config()
@@ -98,6 +99,12 @@ export default defineEventHandler(async (event) => {
         path: `/${contentSlug}`,
         layout,
         draft,
+      }
+      
+      // Markdown partials after the page (_partials/doc-footer.md or post-footer.md)
+      const footer = await pagePartial(settings.contentDir, filePath, layout === 'blog' ? 'post-footer' : 'doc-footer')
+      if (footer) {
+        response.footerHtml = footer
       }
       
       // Breadcrumbs, previous/next and edit link (docs pages)

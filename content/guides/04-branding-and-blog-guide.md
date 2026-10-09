@@ -714,6 +714,19 @@ This treats the root `/content` directory as a blog. Drop Markdown files directl
 
 ---
 
+### 2.15 — Partials: Your Own Content Around Every Page
+
+Add Markdown files to a `_partials/` folder to place your own content around pages, without touching f0's code:
+
+| File | Where it appears |
+|------|------------------|
+| `_partials/announcement.md` | A banner above every page's content |
+| `_partials/footer.md` | The site footer, above `footer_text` and footer links |
+| `_partials/doc-footer.md` | After every docs page (a feedback prompt, support links) |
+| `_partials/post-footer.md` | After every blog post (a newsletter sign-up, an author bio) |
+
+`announcement` and `footer` live in the content root. `doc-footer` and `post-footer` use the nearest `_partials/` folder above the page, so `blog/_partials/post-footer.md` applies to that blog only. Partials support everything pages do (callouts, images, links) and are never listed or served as pages themselves.
+
 ## Part 3: Branding + Blog Together
 
 Here's how everything fits together for a fully branded site with both documentation and a blog.

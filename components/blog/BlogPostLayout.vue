@@ -55,6 +55,7 @@
         :toc="content.toc || []"
         :title="''"
         :markdown="content.markdown"
+        :footer-html="content.footerHtml"
         :path="content.path"
       />
     </div>
@@ -97,6 +98,7 @@ interface ContentResponse {
   path?: string
   layout?: string
   blog?: BlogMeta
+  footerHtml?: string
 }
 
 const props = defineProps<{

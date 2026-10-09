@@ -81,6 +81,7 @@ Expect conflicts where the fork changed the same files (for example `server/midd
 | Feeds carry each post's full content; Atom (`/feed.atom`) and JSON Feed (`/feed.json`) join RSS; blog pages link to all three | Feed readers show whole posts; feeds are larger | None |
 | Previous/next post links cover the whole blog (they stopped after the first index page) and numbered blog folders (`02-blog/`) list their posts at `/blog` | Navigation reaches older posts; blogs in numbered folders stop showing as empty | None |
 | Blog presets (`preset: classic | cards | minimal` in `_config.md`) and `--blog-*` design tokens | None until a site opts in; `classic` is today's look | Optional: try `preset: cards` |
+| Markdown partials: `_partials/announcement.md`, `footer.md`, `doc-footer.md`, `post-footer.md` render around pages | None until a site adds a `_partials/` folder | Optional |
 | Only a folder literally named `private` (or `server`) is blocked | Pages such as `guides/private-keys` or `/servers-guide` stop returning 403 | Rename any page you relied on that block to hide |
 | Files and folders starting with `_` or `.` return 404 as pages | `/blog/_config` no longer shows the config file | None |
 | Raw HTML in Markdown is sanitized | `<script>`, `on*=` handlers, `javascript:` links, `<iframe srcdoc>`, `<object>`, `<embed>`, `<base>`, `<meta>`, `<link>` are removed from rendered pages | Move any intentional scripts out of content |
