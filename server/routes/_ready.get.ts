@@ -24,10 +24,11 @@ import { access, stat } from 'fs/promises'
 import { constants } from 'fs'
 import { logger } from '../utils/logger'
 import { resolve, join } from 'path'
+import { f0Config } from '../utils/f0-config'
 
 export default defineEventHandler(async () => {
-  const config = useRuntimeConfig()
-  const contentDir = resolve(process.cwd(), config.contentDir)
+  const settings = f0Config()
+  const contentDir = resolve(process.cwd(), settings.contentDir)
 
   const checks: Record<string, 'ok' | 'fail'> = {}
 

@@ -34,6 +34,7 @@ import { join, resolve } from 'path'
 import { logger } from '../utils/logger'
 import { isConfinedEntry } from '../utils/paths'
 import { markdownToPlainText, isMarkdownFile, extractFrontmatterSafe } from '../utils/markdown'
+import { f0Config } from '../utils/f0-config'
 
 // =============================================================================
 // TYPES
@@ -205,7 +206,8 @@ async function computeIndexHash(contentDir: string): Promise<string> {
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
-  const contentDir = resolve(process.cwd(), config.contentDir)
+  const settings = f0Config()
+  const contentDir = resolve(process.cwd(), settings.contentDir)
   const siteName = config.public.siteName || 'f0'
 
   try {

@@ -33,6 +33,7 @@ import { isEmailAllowed } from '../../utils/allowlist'
 import { generateOtp, getOtpCode } from '../../utils/otp'
 import { sendOtpEmail } from '../../utils/email'
 import { auditLog } from '../../utils/audit'
+import { f0Config } from '../../utils/f0-config'
 
 // =============================================================================
 // REQUEST VALIDATION
@@ -55,10 +56,10 @@ function isValidEmail(email: string): boolean {
 // =============================================================================
 
 export default defineEventHandler(async (event) => {
-  const config = useRuntimeConfig()
+  const settings = f0Config()
   
   // Check if auth is enabled
-  if (config.authMode === 'public') {
+  if (settings.authMode === 'public') {
     throw createError({
       statusCode: 400,
       statusMessage: 'Bad Request',
@@ -82,7 +83,7 @@ export default defineEventHandler(async (event) => {
   }
   
   // Check allowlist
-  const allowed = await isEmailAllowed(email, config.privateDir)
+  const allowed = await isEmailAllowed(email, settings.privateDir)
   
   if (!allowed) {
     // Log the rejection

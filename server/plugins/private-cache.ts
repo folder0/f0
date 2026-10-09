@@ -20,11 +20,12 @@
 
 import { logger } from '../utils/logger'
 import { markPrivateResponse } from '../utils/http-cache'
+import { f0Config } from '../utils/f0-config'
 
 export default defineNitroPlugin((nitroApp) => {
   nitroApp.hooks.hook('beforeResponse', (event) => {
-    const config = useRuntimeConfig()
-    if (config.authMode !== 'private') return
+    const settings = f0Config()
+    if (settings.authMode !== 'private') return
     if (event.node.res.headersSent) return
 
     const path = getRequestURL(event).pathname

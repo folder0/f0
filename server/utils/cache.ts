@@ -30,6 +30,7 @@ import { resolve } from 'path'
 import { parseMarkdownSafe, type ParsedMarkdown } from './markdown'
 import { logger } from './logger'
 import { validateAndLogAssets } from './asset-validator'
+import { f0Config } from './f0-config'
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -108,8 +109,8 @@ export async function getCachedContent(filePath: string): Promise<CacheEntry> {
 
   // 4. Validate image references (Phase 2.3)
   try {
-    const config = useRuntimeConfig()
-    const contentDir = resolve(process.cwd(), config.contentDir || './content')
+    const settings = f0Config()
+    const contentDir = resolve(process.cwd(), settings.contentDir || './content')
     validateAndLogAssets(rawMarkdown, absPath, contentDir)
   } catch {
     // Validation is non-blocking — skip if config not available

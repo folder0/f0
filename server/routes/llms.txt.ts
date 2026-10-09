@@ -22,9 +22,11 @@
 
 import { getCachedLlmsTxt } from '../utils/llms-cache'
 import { logger } from '../utils/logger'
+import { f0Config } from '../utils/f0-config'
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
+  const settings = f0Config()
   const query = getQuery(event)
   
   // Parse section filter
@@ -35,7 +37,7 @@ export default defineEventHandler(async (event) => {
   
   try {
     const llmText = await getCachedLlmsTxt(
-      config.contentDir,
+      settings.contentDir,
       config.public.siteName,
       sections.length > 0 ? { sections } : {}
     )

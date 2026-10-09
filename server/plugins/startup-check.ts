@@ -29,6 +29,7 @@ import { isConfinedEntry } from '../utils/paths'
 import { prewarmCache } from '../utils/cache'
 import { getCachedLlmsTxt } from '../utils/llms-cache'
 import { isMarkdownFile } from '../utils/markdown'
+import { f0Config } from '../utils/f0-config'
 
 /**
  * Recursively scan content directory for all markdown files.
@@ -68,7 +69,8 @@ export default defineNitroPlugin(async () => {
 
   // Access runtime config
   const config = useRuntimeConfig()
-  const contentDir = resolve(process.cwd(), config.contentDir || './content')
+  const settings = f0Config()
+  const contentDir = resolve(process.cwd(), settings.contentDir)
 
   // =========================================================================
   // CHECK 1: Content directory exists (FATAL)
@@ -76,7 +78,7 @@ export default defineNitroPlugin(async () => {
 
   if (!existsSync(contentDir)) {
     logger.error('Content directory not found', { path: contentDir })
-    logger.error('Create the directory or set CONTENT_DIR environment variable')
+    logger.error('Create the directory or set NUXT_CONTENT_DIR (or CONTENT_DIR)')
     process.exit(1)
   }
 
@@ -95,13 +97,28 @@ export default defineNitroPlugin(async () => {
   // CHECK 3: Auth configuration (FATAL if misconfigured)
   // =========================================================================
 
-  const authMode = config.authMode || 'public'
+  // Settings are read from the runtime environment; say which mode is in
+  // effect and why, so a site that was meant to be private is easy to spot.
+  const authMode = settings.authMode
+  logger.info('Auth mode', { authMode, source: settings.authModeSource })
+
+  for (const warning of settings.warnings) {
+    logger.warn(warning)
+  }
+  if (settings.problems.length > 0) {
+    for (const problem of settings.problems) {
+      logger.error(problem)
+    }
+    logger.error('Refusing to start until the settings above are fixed')
+    process.exit(1)
+  }
+
   if (!config.public.siteUrl) {
     logger.warn('NUXT_PUBLIC_SITE_URL is not set: canonical URLs, sitemap and feed links fall back to the request host. Set it to the public site URL.')
   }
 
   if (authMode === 'private') {
-    const privateDir = resolve(process.cwd(), config.privateDir || './private')
+    const privateDir = resolve(process.cwd(), settings.privateDir)
     const allowlistPath = join(privateDir, 'allowlist.json')
 
     if (!existsSync(allowlistPath)) {

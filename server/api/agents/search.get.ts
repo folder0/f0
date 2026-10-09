@@ -53,6 +53,7 @@ import { readdir, readFile, stat } from 'fs/promises'
 import { join, relative } from 'path'
 import { logger } from '../../utils/logger'
 import { isConfinedEntry } from '../../utils/paths'
+import { f0Config } from '../../utils/f0-config'
 
 /**
  * Count non-overlapping occurrences of `needle` in `haystack`.
@@ -368,7 +369,7 @@ function generateSuggestedQueries(results: SearchResult[], originalQuery: string
 }
 
 export default defineEventHandler(async (event) => {
-  const config = useRuntimeConfig()
+  const settings = f0Config()
   const query = getQuery(event)
   
   // Parse query parameters
@@ -402,7 +403,7 @@ export default defineEventHandler(async (event) => {
   }
   
   // Build/get content index
-  const index = await buildContentIndex(config.contentDir)
+  const index = await buildContentIndex(settings.contentDir)
   
   // Filter by section if specified
   let searchItems = index

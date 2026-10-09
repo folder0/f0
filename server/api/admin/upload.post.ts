@@ -36,6 +36,7 @@ import { invalidateLlmsCache } from '../../utils/llms-cache'
 import { invalidateBrandCache } from '../../utils/brand'
 import { assertAdmin } from '../../utils/admin'
 import { logger } from '../../utils/logger'
+import { f0Config } from '../../utils/f0-config'
 
 // =============================================================================
 // CONFIGURATION
@@ -112,7 +113,7 @@ function validateJsonFile(content: string): { valid: boolean; type?: string } {
 // =============================================================================
 
 export default defineEventHandler(async (event) => {
-  const config = useRuntimeConfig()
+  const settings = f0Config()
 
   // Authorization: admin only, and never reachable in public mode.
   // (In public mode there is no login, so anonymous writes must be rejected.)
@@ -200,7 +201,7 @@ export default defineEventHandler(async (event) => {
   }
   
   // Build full path
-  const fullPath = join(config.contentDir, cleanPath)
+  const fullPath = join(settings.contentDir, cleanPath)
   
   try {
     // Ensure directory exists

@@ -30,9 +30,10 @@ import { resolve, basename } from 'path'
 import { resolveContentPath } from '../../../utils/navigation'
 import { logger } from '../../../utils/logger'
 import { hasHiddenSegment } from '../../../utils/paths'
+import { f0Config } from '../../../utils/f0-config'
 
 export default defineEventHandler(async (event) => {
-  const config = useRuntimeConfig()
+  const settings = f0Config()
   const slug = event.context.params?.slug || ''
   const query = getQuery(event)
   const download = query.download === 'true'
@@ -59,7 +60,7 @@ export default defineEventHandler(async (event) => {
   
   try {
     // Resolve slug to filesystem path
-    const filePath = await resolveContentPath(config.contentDir, contentSlug)
+    const filePath = await resolveContentPath(settings.contentDir, contentSlug)
     
     if (!filePath || !filePath.endsWith('.md')) {
       throw createError({

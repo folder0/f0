@@ -28,8 +28,24 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Unit tests
         run: npm test
-      - name: Build (no .env, no secrets)
-        run: npm run build
+      # Build with canary values in every secret-bearing variable. Settings are
+      # read at runtime, so none of them may appear in the built output (that
+      # output is what goes into the image).
+      - name: Build with canary secrets in the environment
+        env:
+          CANARY: f0-leak-canary-${{ github.run_id }}
+        run: |
+          export NUXT_JWT_SECRET="$CANARY" JWT_SECRET="$CANARY" \
+            NUXT_AWS_ACCESS_KEY_ID="$CANARY" AWS_ACCESS_KEY_ID="$CANARY" \
+            NUXT_AWS_SECRET_ACCESS_KEY="$CANARY" AWS_SECRET_ACCESS_KEY="$CANARY" \
+            NUXT_GITHUB_WEBHOOK_SECRET="$CANARY" GITHUB_WEBHOOK_SECRET="$CANARY" \
+            NUXT_EMAIL_FROM="$CANARY" EMAIL_FROM="$CANARY" \
+            NUXT_AUTH_MODE="$CANARY" AUTH_MODE="$CANARY"
+          npm run build
+          if grep -rl "$CANARY" .output; then
+            echo "::error::Build output contains a value from the build environment"
+            exit 1
+          fi
       - name: Contract tests against the built server
         run: npm run test:contract
 

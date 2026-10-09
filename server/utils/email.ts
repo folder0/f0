@@ -24,6 +24,7 @@
 
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses'
 import { logger } from './logger'
+import { f0Config } from './f0-config'
 
 // =============================================================================
 // SES CLIENT SETUP
@@ -45,17 +46,17 @@ function getSesClient(): SESClient {
   }
   
   // Get config from runtime (injected by Nuxt)
-  const config = useRuntimeConfig()
+  const settings = f0Config()
   
-  if (!config.awsAccessKeyId || !config.awsSecretAccessKey) {
+  if (!settings.awsAccessKeyId || !settings.awsSecretAccessKey) {
     throw new Error('AWS credentials not configured. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.')
   }
   
   sesClient = new SESClient({
-    region: config.awsRegion || 'us-east-1',
+    region: settings.awsRegion || 'us-east-1',
     credentials: {
-      accessKeyId: config.awsAccessKeyId,
-      secretAccessKey: config.awsSecretAccessKey,
+      accessKeyId: settings.awsAccessKeyId,
+      secretAccessKey: settings.awsSecretAccessKey,
     },
   })
   
@@ -186,8 +187,9 @@ This is an automated message from ${siteName}.
  */
 export async function sendOtpEmail(to: string, otp: string): Promise<void> {
   const config = useRuntimeConfig()
+  const settings = f0Config()
   const siteName = config.public.siteName || 'f0'
-  const fromEmail = config.emailFrom
+  const fromEmail = settings.emailFrom
   
   if (!fromEmail) {
     throw new Error('EMAIL_FROM not configured')
@@ -236,13 +238,13 @@ export async function verifyEmailConfiguration(): Promise<{
   error?: string
 }> {
   try {
-    const config = useRuntimeConfig()
+    const settings = f0Config()
     
-    if (!config.awsAccessKeyId || !config.awsSecretAccessKey) {
+    if (!settings.awsAccessKeyId || !settings.awsSecretAccessKey) {
       return { configured: false, error: 'AWS credentials not set' }
     }
     
-    if (!config.emailFrom) {
+    if (!settings.emailFrom) {
       return { configured: false, error: 'EMAIL_FROM not set' }
     }
     

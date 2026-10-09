@@ -23,7 +23,7 @@ Content is copied last, so changing only content reuses the cached app build: `d
 
 ## Configuration
 
-Set configuration with the `NUXT_` environment variable names. Only those override f0's settings when the container starts; short names like `AUTH_MODE` are read once at build time and frozen.
+Set configuration in the container's runtime environment. f0 reads every setting when it starts and nothing at build time. Use the `NUXT_` names below: they work on every release. Current releases also accept the short names (`AUTH_MODE`, `JWT_SECRET`, ...), but releases before October 2026 ignored those at runtime.
 
 ```env
 # Every site

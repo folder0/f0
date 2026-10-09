@@ -28,6 +28,7 @@ import { createHmac, timingSafeEqual } from 'crypto'
 import { invalidateNavigationCache } from '../utils/navigation'
 import { invalidateContentCache } from '../utils/cache'
 import { invalidateConfigCache } from '../utils/config'
+import { f0Config } from '../utils/f0-config'
 import { invalidateLlmsCache } from '../utils/llms-cache'
 import { invalidateBrandCache } from '../utils/brand'
 import type { H3Event } from 'h3'
@@ -136,10 +137,8 @@ function readBodyCapped(event: H3Event, maxBytes: number): Promise<string> {
 // =============================================================================
 
 export default defineEventHandler(async (event) => {
-  const config = useRuntimeConfig()
-  
-  // Get webhook secret from config
-  const webhookSecret = process.env.GITHUB_WEBHOOK_SECRET
+  // NUXT_GITHUB_WEBHOOK_SECRET or GITHUB_WEBHOOK_SECRET, read at startup
+  const webhookSecret = f0Config().githubWebhookSecret
   
   // Get GitHub headers
   const signature = getHeader(event, 'x-hub-signature-256')

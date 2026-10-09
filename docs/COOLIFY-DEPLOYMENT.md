@@ -2,7 +2,7 @@
 
 How to run an f0 site on [Coolify](https://coolify.io) with the repository's Dockerfile. Each site is one Coolify application that builds from its own repository.
 
-> **Read Step 5 before your first deploy.** Environment variables must use the `NUXT_` names shown there. A plain `AUTH_MODE=private` set in Coolify is ignored when the container starts, which leaves a "private" site public.
+> **Read Step 5 before your first deploy.** Use the `NUXT_` names shown there. On releases before October 2026, a plain `AUTH_MODE=private` set in Coolify is ignored when the container starts, which leaves a "private" site public.
 
 ## Prerequisites
 
@@ -107,7 +107,7 @@ Leave **Enable Healthcheck** on. If you set values in the dashboard, mirror the 
 
 ## Step 5: Environment variables
 
-Use the `NUXT_` names below. f0 reads its configuration when the container starts only through these names. Short names such as `AUTH_MODE` or `JWT_SECRET` are read at build time and then frozen, so changing them later has no effect, and setting them only at runtime is ignored.
+Use the `NUXT_` names below. f0 reads its settings when the container starts, never during the build, so a change takes effect on the next restart without rebuilding. Current releases also accept short names such as `AUTH_MODE` or `JWT_SECRET`, but releases before October 2026 ignored them at runtime, so the `NUXT_` names are the safe choice. The startup log line `Auth mode` shows the mode in effect and which variable set it.
 
 ### 5.1 Public site
 
@@ -153,7 +153,7 @@ In `private/allowlist.json`, list who may sign in, and list admins explicitly if
 
 ### 5.4 Keep secrets out of the build
 
-In Coolify, untick **Available at Buildtime** for `NUXT_JWT_SECRET`, `NUXT_AWS_ACCESS_KEY_ID` and `NUXT_AWS_SECRET_ACCESS_KEY`, and leave **Available at Runtime** ticked. Values available at build time can end up inside the built image, where anyone with access to the image can read them.
+In Coolify, untick **Available at Buildtime** for `NUXT_JWT_SECRET`, `NUXT_AWS_ACCESS_KEY_ID` and `NUXT_AWS_SECRET_ACCESS_KEY`, and leave **Available at Runtime** ticked. Current releases never read them during the build, but older releases wrote build-time values into the image, where anyone with access to the image can read them, and the build has no use for them either way.
 
 If a secret was ever available at build time, or was in a `.env` file during a build, rotate it.
 
@@ -245,7 +245,7 @@ Swap thrashing on a small server. Add swap or RAM, and stop pruning the build ca
 
 ### A private site is reachable without logging in
 
-The mode was set with `AUTH_MODE` instead of `NUXT_AUTH_MODE` (Step 5). Set the `NUXT_` variables, redeploy, and check that `curl -sI https://your-domain.com/guides` answers with a redirect to `/login`.
+Check the `Auth mode` line in the startup log. If it says `public`, the mode is not set in the runtime environment (or, on a release before October 2026, it was set as `AUTH_MODE` instead of `NUXT_AUTH_MODE`). Set the `NUXT_` variables (Step 5), redeploy, and check that `curl -sI https://your-domain.com/guides` answers with a redirect to `/login`.
 
 ---
 
@@ -267,7 +267,7 @@ HEALTH CHECK
   □ Enabled; http, 127.0.0.1, port 3000, path /_ready
 
 ENVIRONMENT
-  □ NUXT_AUTH_MODE (not AUTH_MODE)
+  □ NUXT_AUTH_MODE, set for runtime
   □ NUXT_PUBLIC_SITE_NAME, NUXT_PUBLIC_SITE_URL
   □ Private: NUXT_JWT_SECRET + NUXT_AWS_* + NUXT_EMAIL_FROM, all set together
   □ Secrets not available at build time

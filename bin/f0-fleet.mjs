@@ -20,7 +20,8 @@
  *
  * FLAGS:
  *   PUBLIC-BUT-MEANT-PRIVATE  AUTH_MODE=private is set without NUXT_AUTH_MODE:
- *                             the runtime ignores it, so the site is public
+ *                             releases before runtime settings (October 2026)
+ *                             ignore it, so the site is public
  *   PROBE-PUBLIC              --probe found a page served without a login on
  *                             a site configured as private
  *   SECRET-AT-BUILDTIME       a secret is available at build time and can end
@@ -81,10 +82,10 @@ export function analyzeApp(app, envs, storages = []) {
 
   const flags = []
   if (shortAuth === 'private' && runtimeAuth !== 'private') {
-    flags.push({ code: 'PUBLIC-BUT-MEANT-PRIVATE', detail: 'AUTH_MODE=private is ignored at runtime; set NUXT_AUTH_MODE=private (with NUXT_JWT_SECRET and NUXT_AWS_*)' })
+    flags.push({ code: 'PUBLIC-BUT-MEANT-PRIVATE', detail: 'AUTH_MODE=private is ignored at runtime by releases before runtime settings; set NUXT_AUTH_MODE=private (with NUXT_JWT_SECRET and NUXT_AWS_*), which works on every release' })
   }
   if (intendedPrivate && !byKey.has('NUXT_JWT_SECRET')) {
-    flags.push({ code: 'PRIVATE-WITHOUT-SECRET', detail: 'private mode needs NUXT_JWT_SECRET set at runtime' })
+    flags.push({ code: 'PRIVATE-WITHOUT-SECRET', detail: 'private mode needs NUXT_JWT_SECRET set at runtime (current releases refuse to start without it)' })
   }
   for (const key of SECRET_KEYS) {
     if (byKey.get(key)?.buildtime) {

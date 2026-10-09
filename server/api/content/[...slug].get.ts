@@ -26,9 +26,10 @@ import { resolveLayoutForPath, getConfigForPath } from '../../utils/config'
 import { getCachedContent } from '../../utils/cache'
 import { logger } from '../../utils/logger'
 import { hasHiddenSegment } from '../../utils/paths'
+import { f0Config } from '../../utils/f0-config'
 
 export default defineEventHandler(async (event) => {
-  const config = useRuntimeConfig()
+  const settings = f0Config()
   const slug = event.context.params?.slug || ''
   
   // Security: Block private paths
@@ -53,7 +54,7 @@ export default defineEventHandler(async (event) => {
   
   try {
     // Resolve slug to filesystem path
-    const filePath = await resolveContentPath(config.contentDir, contentSlug)
+    const filePath = await resolveContentPath(settings.contentDir, contentSlug)
     
     if (!filePath) {
       throw createError({
@@ -68,7 +69,7 @@ export default defineEventHandler(async (event) => {
       const cached = await getCachedContent(filePath)
       
       // Determine layout
-      const layout = resolveLayoutForPath(config.contentDir, contentSlug)
+      const layout = resolveLayoutForPath(settings.contentDir, contentSlug)
       
       // Base response
       const response: Record<string, unknown> = {
@@ -85,7 +86,7 @@ export default defineEventHandler(async (event) => {
       // Add blog metadata when layout is blog
       if (layout === 'blog') {
         const fm = cached.frontmatter
-        const dirConfig = getConfigForPath(config.contentDir, contentSlug)
+        const dirConfig = getConfigForPath(settings.contentDir, contentSlug)
         const { content: bodyContent } = extractFrontmatter(cached.rawMarkdown)
         const filename = basename(filePath)
         

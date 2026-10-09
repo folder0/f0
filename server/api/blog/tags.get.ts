@@ -14,6 +14,7 @@ import { join, extname, basename } from 'path'
 import { logger } from '../../utils/logger'
 import { resolveContentSubdir } from '../../utils/paths'
 import { extractFrontmatter, isMarkdownFile } from '../../utils/markdown'
+import { f0Config } from '../../utils/f0-config'
 
 interface TagInfo {
   name: string
@@ -22,11 +23,11 @@ interface TagInfo {
 }
 
 export default defineEventHandler(async (event) => {
-  const config = useRuntimeConfig()
+  const settings = f0Config()
   const query = getQuery(event)
 
   // Confine ?path= to the content directory; a missing directory lists no tags.
-  const target = await resolveContentSubdir(config.contentDir, query.path)
+  const target = await resolveContentSubdir(settings.contentDir, query.path)
   if (!target.ok) {
     throw createError({ statusCode: 400, statusMessage: 'Bad Request', data: { message: 'Invalid path' } })
   }

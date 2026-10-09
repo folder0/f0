@@ -32,6 +32,7 @@ import { lookup } from 'mrmime'
 import { isProcessableImage, parseImageOptions, getProcessedImage } from '../../../utils/image-processor'
 import { logger } from '../../../utils/logger'
 import { isConfinedPath } from '../../../utils/paths'
+import { f0Config } from '../../../utils/f0-config'
 
 /** CSP for documents served from the content folder: no script, no same-origin access. */
 const DOCUMENT_SANDBOX_CSP = "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'"
@@ -45,7 +46,7 @@ function isActiveDocumentType(mimeType: string): boolean {
 }
 
 export default defineEventHandler(async (event) => {
-  const config = useRuntimeConfig()
+  const settings = f0Config()
   const assetPath = event.context.params?.path || ''
   
   // Security: Block path traversal
@@ -66,7 +67,7 @@ export default defineEventHandler(async (event) => {
   }
   
   // Resolve the full path
-  const contentDir = resolve(process.cwd(), config.contentDir)
+  const contentDir = resolve(process.cwd(), settings.contentDir)
   const assetsDir = join(contentDir, 'assets')
   const filePath = normalize(join(assetsDir, assetPath))
   

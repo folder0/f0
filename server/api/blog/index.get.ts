@@ -26,6 +26,7 @@ import {
 import { resolveDirectoryConfig, defaultDirectoryConfig, type DirectoryConfig } from '../../utils/config'
 import { resolveContentSubdir } from '../../utils/paths'
 import { logger } from '../../utils/logger'
+import { f0Config } from '../../utils/f0-config'
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -171,13 +172,13 @@ async function scanBlogPosts(
 // =============================================================================
 
 export default defineEventHandler(async (event): Promise<BlogIndexResponse> => {
-  const config = useRuntimeConfig()
+  const settings = f0Config()
   const query = getQuery(event)
 
   // Confine ?path= to the content directory (rejects '..', hidden segments,
   // symlink escapes). A well-formed path that does not exist keeps returning
   // an empty listing, without being cached.
-  const target = await resolveContentSubdir(config.contentDir, query.path)
+  const target = await resolveContentSubdir(settings.contentDir, query.path)
   if (!target.ok) {
     throw createError({ statusCode: 400, statusMessage: 'Bad Request', data: { message: 'Invalid path' } })
   }
@@ -187,11 +188,11 @@ export default defineEventHandler(async (event): Promise<BlogIndexResponse> => {
 
   // Get directory config
   const dirConfig = target.exists
-    ? resolveDirectoryConfig(config.contentDir, dirPath)
+    ? resolveDirectoryConfig(settings.contentDir, dirPath)
     : defaultDirectoryConfig()
 
   // Scan posts
-  let posts = target.exists ? await scanBlogPosts(config.contentDir, dirPath, dirConfig) : []
+  let posts = target.exists ? await scanBlogPosts(settings.contentDir, dirPath, dirConfig) : []
 
   // Aggregate tags (before filtering)
   const tagMap = new Map<string, number>()

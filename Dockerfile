@@ -59,15 +59,8 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=src /src ./
 
-# Build arguments (can be overridden at build time)
-ARG NUXT_PUBLIC_SITE_NAME=f0
-ARG NUXT_PUBLIC_SITE_DESCRIPTION=Documentation
-
-# Set build-time environment variables
-ENV NUXT_PUBLIC_SITE_NAME=$NUXT_PUBLIC_SITE_NAME
-ENV NUXT_PUBLIC_SITE_DESCRIPTION=$NUXT_PUBLIC_SITE_DESCRIPTION
-
-# Build the application
+# The build reads no environment variables (settings are read at startup),
+# so nothing here can leak into the image or bust the build cache.
 RUN npm run build
 
 # =============================================================================
@@ -96,6 +89,13 @@ EXPOSE 3000
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=3000
+
+# Optional image defaults for the public site metadata. The runtime
+# environment (NUXT_PUBLIC_*) overrides them. Never pass secrets as build args.
+ARG NUXT_PUBLIC_SITE_NAME=f0
+ARG NUXT_PUBLIC_SITE_DESCRIPTION=Documentation
+ENV NUXT_PUBLIC_SITE_NAME=$NUXT_PUBLIC_SITE_NAME
+ENV NUXT_PUBLIC_SITE_DESCRIPTION=$NUXT_PUBLIC_SITE_DESCRIPTION
 
 # Probe the readiness endpoint, not '/': '/' is a full server render (and a
 # redirect in private mode). 127.0.0.1, not localhost: BusyBox wget may resolve

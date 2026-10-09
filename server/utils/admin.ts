@@ -24,16 +24,17 @@
 import type { H3Event } from 'h3'
 import { isEmailAdmin } from './allowlist'
 import { auditLog } from './audit'
+import { f0Config } from './f0-config'
 
 /**
  * Throw an appropriate HTTP error unless the request comes from an
  * authenticated admin. Returns the admin's email on success.
  */
 export async function assertAdmin(event: H3Event): Promise<string> {
-  const config = useRuntimeConfig()
+  const settings = f0Config()
 
   // Admin endpoints are only meaningful when authentication is enabled.
-  if (config.authMode !== 'private') {
+  if (settings.authMode !== 'private') {
     await auditLog(event, 'access_denied', 'anonymous', false, 'admin_requires_private_mode', {
       path: getRequestURL(event).pathname,
       method: event.method,
@@ -58,7 +59,7 @@ export async function assertAdmin(event: H3Event): Promise<string> {
   }
 
   // Must be an admin per the allowlist.
-  const allowed = await isEmailAdmin(email, config.privateDir)
+  const allowed = await isEmailAdmin(email, settings.privateDir)
   if (!allowed) {
     await auditLog(event, 'access_denied', email, false, 'not_admin', {
       path: getRequestURL(event).pathname,

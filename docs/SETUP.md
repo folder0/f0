@@ -249,7 +249,7 @@ kill -9 <PID>
 
 ### Authentication not working
 
-1. Check `NUXT_AUTH_MODE=private` is set (in containers, the short `AUTH_MODE` is ignored at runtime)
+1. Check the `Auth mode` line in the server log says `private`, and set `NUXT_AUTH_MODE=private` in the runtime environment if not
 2. Verify AWS credentials are correct
 3. Ensure email is in allowlist
 4. Check SES is out of sandbox mode (or recipient is verified)

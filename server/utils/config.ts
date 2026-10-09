@@ -21,6 +21,7 @@ import { readFileSync, existsSync } from 'fs'
 import { join, dirname } from 'path'
 import yaml from 'yaml'
 import { logger } from './logger'
+import { f0Config } from './f0-config'
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -192,8 +193,7 @@ export function resolveDirectoryConfig(contentDir: string, dirPath: string): Dir
   }
   
   // 2. If this is the root directory and F0_MODE=blog, apply blog defaults
-  const f0Mode = process.env.F0_MODE || ''
-  if (normalizedDir === '' && f0Mode === 'blog') {
+  if (normalizedDir === '' && f0Config().f0Mode === 'blog') {
     const config: DirectoryConfig = {
       ...DEFAULT_BLOG_CONFIG,
       title: process.env.NUXT_PUBLIC_SITE_NAME || 'Blog',

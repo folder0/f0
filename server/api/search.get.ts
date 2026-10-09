@@ -28,6 +28,7 @@ import { join, relative } from 'path'
 import { getCachedContent } from '../utils/cache'
 import { logger } from '../utils/logger'
 import { isConfinedEntry } from '../utils/paths'
+import { f0Config } from '../utils/f0-config'
 
 /**
  * Count non-overlapping occurrences of `needle` in `haystack`.
@@ -326,7 +327,7 @@ function generateExcerpt(content: string, terms: string[]): string {
 }
 
 export default defineEventHandler(async (event) => {
-  const config = useRuntimeConfig()
+  const settings = f0Config()
   const query = getQuery(event)
   const searchQuery = (query.q as string || '').trim()
   
@@ -339,7 +340,7 @@ export default defineEventHandler(async (event) => {
   }
   
   // Build/get content index
-  const index = await buildContentIndex(config.contentDir)
+  const index = await buildContentIndex(settings.contentDir)
   
   // Search
   const results = searchContent(index, searchQuery)

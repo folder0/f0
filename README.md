@@ -367,21 +367,25 @@ node .output/server/index.mjs
 
 ### Environment Variables
 
-Set these with the `NUXT_` names shown. Only those override the configuration when the container starts; short names like `AUTH_MODE` are read once at build time and then ignored (a site set to private that way stays public). For local development, the short names in `.env` work because `nuxt dev` reads them on every start.
+All settings are read when the server starts, from the runtime environment. Nothing is read at build time, so values that exist only during the build (for example Coolify variables limited to build time) have no effect, and no secret ends up inside the image. Each server setting accepts the `NUXT_` name shown or the short name in brackets; if both are set, the `NUXT_` name wins. The startup log line `Auth mode` shows the mode in effect and which variable set it.
+
+A private site without a JWT secret refuses to start rather than run unprotected. Any `AUTH_MODE` value other than `public` (including typos) is treated as private.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NUXT_PUBLIC_SITE_NAME` | `f0` | Site name (header, OG, RSS) |
 | `NUXT_PUBLIC_SITE_DESCRIPTION` | `Documentation` | Default meta description |
 | `NUXT_PUBLIC_SITE_URL` | — | Base URL for sitemap, canonical links, OG |
-| `NUXT_CONTENT_DIR` | `./content` | Path to content directory |
-| `NUXT_AUTH_MODE` | `public` | `public` or `private` |
-| `NUXT_JWT_SECRET` | — | Secret for signing tokens (required in private mode) |
-| `NUXT_AWS_REGION` | `us-east-1` | AWS region for SES |
-| `NUXT_AWS_ACCESS_KEY_ID` | — | AWS credentials for email |
-| `NUXT_AWS_SECRET_ACCESS_KEY` | — | AWS credentials for email |
-| `NUXT_EMAIL_FROM` | — | Sender email address |
-| `GITHUB_WEBHOOK_SECRET` | — | Secret for webhook signature verification |
+| `NUXT_CONTENT_DIR` (`CONTENT_DIR`) | `./content` | Path to content directory |
+| `NUXT_PRIVATE_DIR` (`PRIVATE_DIR`) | `./private` | Path to the directory holding `allowlist.json` |
+| `NUXT_AUTH_MODE` (`AUTH_MODE`) | `public` | `public` or `private` |
+| `NUXT_F0_MODE` (`F0_MODE`) | `docs` | `blog` applies blog defaults to the site root |
+| `NUXT_JWT_SECRET` (`JWT_SECRET`) | — | Secret for signing sessions, 32+ random characters (required in private mode) |
+| `NUXT_AWS_REGION` (`AWS_REGION`) | `us-east-1` | AWS region for SES |
+| `NUXT_AWS_ACCESS_KEY_ID` (`AWS_ACCESS_KEY_ID`) | — | AWS credentials for email |
+| `NUXT_AWS_SECRET_ACCESS_KEY` (`AWS_SECRET_ACCESS_KEY`) | — | AWS credentials for email |
+| `NUXT_EMAIL_FROM` (`EMAIL_FROM`) | — | Sender email address |
+| `NUXT_GITHUB_WEBHOOK_SECRET` (`GITHUB_WEBHOOK_SECRET`) | — | Secret for webhook signature verification |
 
 ---
 

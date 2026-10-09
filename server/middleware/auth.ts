@@ -37,6 +37,7 @@ import { checkEmailAccess } from '../utils/allowlist'
 import { isSessionRevoked } from '../utils/sessions'
 import { markPrivateResponse } from '../utils/http-cache'
 import { logger } from '../utils/logger'
+import { f0Config } from '../utils/f0-config'
 
 // =============================================================================
 // CONFIGURATION
@@ -75,7 +76,7 @@ const BLOCKED_ROUTES = [
 export default defineEventHandler(async (event) => {
   const url = getRequestURL(event)
   const path = url.pathname // Use pathname to exclude query string
-  const config = useRuntimeConfig()
+  const settings = f0Config()
   
   // ---------------------------------------------------------------------------
   // SECURITY: Block access to sensitive paths
@@ -91,9 +92,23 @@ export default defineEventHandler(async (event) => {
   }
   
   // ---------------------------------------------------------------------------
+  // FAIL CLOSED: a private site with unusable settings serves nothing
+  // ---------------------------------------------------------------------------
+  // The startup check exits in this case; this covers requests that arrive
+  // before it does. Liveness stays up so the log can be read.
+  if (settings.problems.length > 0 && path !== '/_health') {
+    markPrivateResponse(event)
+    throw createError({
+      statusCode: 503,
+      statusMessage: 'Service Unavailable',
+      data: { message: 'Site configuration is incomplete' },
+    })
+  }
+
+  // ---------------------------------------------------------------------------
   // PUBLIC MODE: Allow all access
   // ---------------------------------------------------------------------------
-  if (config.authMode === 'public') {
+  if (settings.authMode === 'public') {
     return // Continue to route handler
   }
   
@@ -198,7 +213,7 @@ export default defineEventHandler(async (event) => {
   // the allowlist lose access immediately, not when the 72h token expires.
   const { email, jti } = result.payload
   const revoked = await isSessionRevoked(jti)
-  const access = revoked ? 'denied' : await checkEmailAccess(email, config.privateDir)
+  const access = revoked ? 'denied' : await checkEmailAccess(email, settings.privateDir)
 
   // Allowlist unreadable and never loaded: fail closed, but keep the cookie so
   // sessions resume once the file is fixed.

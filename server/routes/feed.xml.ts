@@ -21,6 +21,7 @@ import {
   isMarkdownFile,
 } from '../utils/markdown'
 import { resolveDirectoryConfig, defaultDirectoryConfig } from '../utils/config'
+import { f0Config } from '../utils/f0-config'
 
 /**
  * Escape XML special characters
@@ -36,17 +37,18 @@ function escapeXml(text: string): string {
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
+  const settings = f0Config()
   const query = getQuery(event)
 
   // Confine ?path= to the content directory (rejects '..', hidden segments,
   // symlink escapes). A missing directory yields an empty feed, uncached.
-  const target = await resolveContentSubdir(config.contentDir, query.path)
+  const target = await resolveContentSubdir(settings.contentDir, query.path)
   if (!target.ok) {
     throw createError({ statusCode: 400, statusMessage: 'Bad Request', data: { message: 'Invalid path' } })
   }
   const dirPath = target.rel
   const dirConfig = target.exists
-    ? resolveDirectoryConfig(config.contentDir, dirPath)
+    ? resolveDirectoryConfig(settings.contentDir, dirPath)
     : defaultDirectoryConfig()
   const fullPath = target.abs
 

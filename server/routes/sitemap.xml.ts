@@ -21,6 +21,7 @@ import { resolveLayoutForPath } from '../utils/config'
 import { logger } from '../utils/logger'
 import { isConfinedEntry } from '../utils/paths'
 import { createHash } from 'crypto'
+import { f0Config } from '../utils/f0-config'
 
 // =============================================================================
 // TYPES
@@ -197,7 +198,8 @@ function buildSitemapXml(entries: SitemapEntry[], baseUrl: string): string {
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
-  const contentDir = resolve(process.cwd(), config.contentDir)
+  const settings = f0Config()
+  const contentDir = resolve(process.cwd(), settings.contentDir)
 
   // Determine base URL from config or request
   const requestUrl = getRequestURL(event)
