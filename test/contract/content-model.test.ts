@@ -153,6 +153,14 @@ describe('site search quality', () => {
     expect(first.excerpt.toLowerCase()).toContain('rotation')
   })
 
+  it('finds pages that mention a word only in their body, for agents too', async () => {
+    expect((await search('rotation')).map(r => r.path)).toContain('/guides/private-keys')
+    const agents = await json('/api/agents/search?q=rotation')
+    expect(agents.results[0].path).toBe('/guides/private-keys')
+    expect(agents.results[0].relevance).toBe(1)
+    expect(Object.keys(agents.results[0]).sort()).toEqual(['excerpt', 'headings', 'metadata', 'path', 'relevance', 'section', 'title', 'url'])
+  })
+
   it('keeps the response shape', async () => {
     const body = await json('/api/search?q=intro')
     expect(Object.keys(body).sort()).toEqual(['query', 'results', 'total'])

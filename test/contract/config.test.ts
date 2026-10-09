@@ -93,6 +93,6 @@ describe('webhook push', () => {
     })
     expect(response.status).toBe(200)
     expect(await search()).toEqual(['/guides/zanzibar'])
-    expect(server.output()).toMatch(/Content caches invalidated.*"search"/)
+    expect(server.output()).toMatch(/Content caches invalidated.*"search-index"/)
   })
 })
