@@ -33,11 +33,13 @@ import remarkRehype from 'remark-rehype'
 import rehypeSlug from 'rehype-slug'
 import rehypeHighlight from 'rehype-highlight'
 import rehypeStringify from 'rehype-stringify'
+import rehypeRaw from 'rehype-raw'
 import { visit } from 'unist-util-visit'
 import type { Root, Text, Paragraph } from 'mdast'
 import type { Root as HastRoot, Element } from 'hast'
 import yaml from 'yaml'
 import { logger } from './logger'
+import { rehypeDropTableWhitespace, rehypeRestoreTableWhitespace, rehypeStripDangerous } from './sanitize'
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -979,6 +981,13 @@ export async function parseMarkdown(content: string): Promise<ParsedMarkdown> {
       .use(rehypeHighlight, { detect: false, ignoreMissing: true })
       // Wrap code blocks with copy button UI
       .use(rehypeCodeBlocks)
+      // Parse raw HTML (author HTML and f0's preprocessed blocks) into real
+      // nodes, then strip script-capable constructs. Runs after slugs and TOC,
+      // so heading anchors are unaffected.
+      .use(rehypeDropTableWhitespace)
+      .use(rehypeRaw)
+      .use(rehypeRestoreTableWhitespace)
+      .use(rehypeStripDangerous)
       // Convert to HTML string
       .use(rehypeStringify, { allowDangerousHtml: true })
     
