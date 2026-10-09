@@ -133,3 +133,44 @@ describe('markdownToPlainText', () => {
     expect(text).not.toContain(':::')
   })
 })
+
+describe('authoring components', () => {
+  it('renders tabs as labelled panels with Markdown inside', async () => {
+    const { html } = await parseMarkdown(':::tabs\n@tab npm\n```bash\nnpm install f0\n```\n@tab pnpm\nRun `pnpm add f0`.\n:::\n')
+    expect(html).toContain('<div class="f0-tabs">')
+    expect(html).toMatch(/<div class="f0-tab" data-tab-label="npm">[\s\S]*npm install f0[\s\S]*<\/div>/)
+    expect(html).toMatch(/<div class="f0-tab" data-tab-label="pnpm">\s*<p>Run <code>pnpm add f0<\/code>\.<\/p>/)
+  })
+
+  it('escapes tab labels', async () => {
+    const { html } = await parseMarkdown(':::tabs\n@tab "><img src=x onerror=alert(1)>\nx\n:::\n')
+    // The payload stays inside the quoted attribute value, where < is inert
+    expect(html).toContain('<div class="f0-tab" data-tab-label="&#x22;><img src=x onerror=alert(1)>">')
+    expect(html.match(/<img/g)).toHaveLength(1)
+  })
+
+  it('renders steps and cards with Markdown inside', async () => {
+    const steps = (await parseMarkdown(':::steps\n### Install\nRun it.\n### Configure\nSet it.\n:::\n')).html
+    expect(steps).toMatch(/<div class="f0-steps">\s*<h3 id="install">Install<\/h3>/)
+    const cards = (await parseMarkdown(':::cards\n- [Guides](/guides) — Start here\n- [API](/api) — Endpoints\n:::\n')).html
+    expect(cards).toMatch(/<div class="f0-cards">\s*<ul>/)
+    expect(cards).toContain('<a href="/guides">Guides</a>')
+  })
+
+  it('handles callouts and steps nested in tabs', async () => {
+    const { html } = await parseMarkdown(':::tabs\n@tab One\n:::tip\nA tip.\n:::\n@tab Two\n:::steps\n### First\nGo.\n:::\n:::\n')
+    expect(html).toMatch(/data-tab-label="One">\s*<div class="callout callout-tip">/)
+    expect(html).toMatch(/data-tab-label="Two">\s*<div class="f0-steps">/)
+  })
+
+  it('leaves component syntax inside code fences alone', async () => {
+    const { html } = await parseMarkdown('```md\n:::tabs\n@tab A\nx\n:::\n```\n')
+    expect(html).not.toContain('f0-tabs')
+    expect(html).toContain('@tab A')
+  })
+
+  it('becomes readable plain text for llms.txt', () => {
+    const text = markdownToPlainText(':::tabs\n@tab npm\nUse npm.\n@tab pnpm\nUse pnpm.\n:::\n')
+    expect(text).toBe('npm:\nUse npm.\npnpm:\nUse pnpm.')
+  })
+})

@@ -213,7 +213,50 @@ function unmaskFencedCode(text: string, blocks: FencedBlock[]): string {
  */
 function preprocessDirectives(markdown: string): string {
   const { text, blocks } = maskFencedCode(markdown)
-  return unmaskFencedCode(preprocessApiBlocks(preprocessEmbeds(preprocessCallouts(text))), blocks)
+  return unmaskFencedCode(preprocessApiBlocks(preprocessEmbeds(preprocessComponents(preprocessCallouts(text)))), blocks)
+}
+
+// =============================================================================
+// AUTHORING COMPONENTS (:::tabs, :::steps, :::cards)
+// =============================================================================
+
+// A component block whose body contains no other component opening, so
+// nested blocks are converted innermost first
+const COMPONENT_BLOCK = /^:::(tabs|steps|cards)[ \t]*\n((?:(?!^:::(?:tabs|steps|cards)\b)[\s\S])*?)\n:::[ \t]*$/gm
+
+/**
+ * Convert authoring components to HTML blocks whose content stays Markdown:
+ *
+ *   :::tabs                 :::steps              :::cards
+ *   @tab npm                ### Install           - [Guides](/guides) — Start here
+ *   ```bash ... ```         Run the installer.    - [API](/api) — Endpoints
+ *   @tab pnpm               ### Configure         :::
+ *   ...                     ...
+ *   :::                     :::
+ *
+ * Tabs work without JavaScript (all panels shown, each labelled); the page
+ * script turns them into a tab bar. Steps number each ### heading. Cards lay
+ * out a list of links as a grid.
+ */
+function preprocessComponents(markdown: string): string {
+  let text = markdown
+  for (let pass = 0; pass < 10; pass++) {
+    const next = text.replace(COMPONENT_BLOCK, (_match, kind: string, body: string) => {
+      if (kind !== 'tabs') {
+        return `<div class="f0-${kind}">\n\n${body.trim()}\n\n</div>`
+      }
+      const panels = body.split(/^@tab[ \t]+(.+?)[ \t]*$/m)
+      const intro = panels.shift()?.trim() ?? ''
+      const tabs: string[] = []
+      for (let i = 0; i < panels.length; i += 2) {
+        tabs.push(`<div class="f0-tab" data-tab-label="${escapeHtml(panels[i])}">\n\n${(panels[i + 1] ?? '').trim()}\n\n</div>`)
+      }
+      return `${intro ? `${intro}\n\n` : ''}<div class="f0-tabs">\n\n${tabs.join('\n\n')}\n\n</div>`
+    })
+    if (next === text) break
+    text = next
+  }
+  return text
 }
 
 function preprocessCallouts(markdown: string): string {
@@ -970,6 +1013,8 @@ export function markdownToPlainText(content: string): string {
   // Convert callouts to plain text (keep content, remove markers)
   text = text.replace(/^:::api\s+(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)\s+(.+?)\s*$/gm, '$1 $2')
   text = text.replace(/:::(info|warning|error|success)\s*/g, '')
+  text = text.replace(/^:::(tabs|steps|cards)[ \t]*$/gm, '')
+  text = text.replace(/^@tab[ \t]+(.+?)[ \t]*$/gm, '$1:')
   text = text.replace(/:::\s*/g, '')
   
   // Convert headings (keep text, indicate level)

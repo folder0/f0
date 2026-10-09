@@ -169,6 +169,46 @@ This is a success callout.
 :::
 ```
 
+### Tabs, Steps and Cards
+
+**Tabs** — alternatives side by side (package managers, languages, platforms). Readers' choice is remembered and applied to every tab group with the same label.
+
+````markdown
+:::tabs
+@tab npm
+```bash
+npm install f0
+```
+@tab pnpm
+```bash
+pnpm add f0
+```
+:::
+````
+
+**Steps** — a numbered procedure; each `###` heading inside is a step.
+
+```markdown
+:::steps
+### Create content
+Add Markdown files to `content/`.
+
+### Deploy
+Build the image and run it.
+:::
+```
+
+**Cards** — a grid of links; each list item is a card.
+
+```markdown
+:::cards
+- [Guides](/guides) Start with the basics.
+- [API Reference](/api) Every endpoint.
+:::
+```
+
+Tabs, steps and cards can contain callouts, code blocks and each other. Inside a code block, the syntax is shown as written. Without JavaScript, tabs show all panels one after another, each with its label.
+
 ### YouTube Embeds
 
 Embed YouTube videos:

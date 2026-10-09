@@ -286,11 +286,107 @@ async function setupMermaid() {
   }
 }
 
+// Turn :::tabs blocks into a tab bar. Without JavaScript they render as
+// labelled panels. The chosen label is remembered and applied to every group
+// that has it (pick "pnpm" once, see pnpm everywhere).
+const TAB_STORAGE_KEY = 'f0-tab'
+const tabSelectors = new WeakMap<HTMLElement, (label: string) => void>()
+
+function rememberedTab(): string {
+  try {
+    return localStorage.getItem(TAB_STORAGE_KEY) || ''
+  }
+  catch {
+    return ''
+  }
+}
+
+function setupTabs() {
+  if (!contentRef.value) return
+  const groups = Array.from(contentRef.value.querySelectorAll<HTMLElement>('.f0-tabs:not([data-enhanced])'))
+
+  groups.forEach((group, groupIndex) => {
+    const panels = Array.from(group.children).filter((el): el is HTMLElement => el instanceof HTMLElement && el.classList.contains('f0-tab'))
+    if (panels.length === 0) return
+
+    const list = document.createElement('div')
+    list.className = 'f0-tab-list'
+    list.setAttribute('role', 'tablist')
+    const prefix = `f0-tabs-${groupIndex}-${Math.random().toString(36).slice(2, 8)}`
+
+    const buttons = panels.map((panel, index) => {
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = 'f0-tab-button'
+      button.id = `${prefix}-tab-${index}`
+      button.setAttribute('role', 'tab')
+      button.setAttribute('aria-controls', `${prefix}-panel-${index}`)
+      button.textContent = panel.dataset.tabLabel || `Tab ${index + 1}`
+      panel.id = `${prefix}-panel-${index}`
+      panel.setAttribute('role', 'tabpanel')
+      panel.setAttribute('aria-labelledby', button.id)
+      panel.tabIndex = 0
+      list.appendChild(button)
+      return button
+    })
+
+    const select = (index: number) => {
+      buttons.forEach((button, i) => {
+        const active = i === index
+        button.setAttribute('aria-selected', String(active))
+        button.tabIndex = active ? 0 : -1
+        panels[i].hidden = !active
+      })
+    }
+
+    const choose = (index: number) => {
+      select(index)
+      const label = panels[index].dataset.tabLabel || ''
+      try {
+        localStorage.setItem(TAB_STORAGE_KEY, label)
+      }
+      catch {
+        // storage unavailable
+      }
+      contentRef.value?.querySelectorAll<HTMLElement>('.f0-tabs[data-enhanced]').forEach((other) => {
+        if (other !== group) tabSelectors.get(other)?.(label)
+      })
+    }
+
+    buttons.forEach((button, index) => {
+      button.addEventListener('click', () => choose(index))
+      button.addEventListener('keydown', (event) => {
+        const last = buttons.length - 1
+        const target = event.key === 'ArrowRight' ? (index === last ? 0 : index + 1)
+          : event.key === 'ArrowLeft' ? (index === 0 ? last : index - 1)
+            : event.key === 'Home' ? 0
+              : event.key === 'End' ? last
+                : -1
+        if (target < 0) return
+        event.preventDefault()
+        choose(target)
+        buttons[target].focus()
+      })
+    })
+
+    tabSelectors.set(group, (label) => {
+      const index = panels.findIndex(panel => panel.dataset.tabLabel === label)
+      if (index >= 0) select(index)
+    })
+
+    group.prepend(list)
+    group.dataset.enhanced = 'true'
+    const preferred = panels.findIndex(panel => panel.dataset.tabLabel === rememberedTab())
+    select(preferred >= 0 ? preferred : 0)
+  })
+}
+
 // Run setup after mount and when HTML changes
 onMounted(() => {
   setupCopyButtons()
   setupExternalLinks()
   setupLazyImages()
+  setupTabs()
   setupMermaid()
 })
 
@@ -300,6 +396,7 @@ watch(() => props.html, () => {
     setupCopyButtons()
     setupExternalLinks()
     setupLazyImages()
+    setupTabs()
     setupMermaid()
   })
 })

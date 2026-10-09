@@ -1491,3 +1491,141 @@
       page-break-inside: avoid;
     }
   }
+/* =============================================================================
+   AUTHORING COMPONENTS (:::tabs, :::steps, :::cards)
+   ============================================================================= */
+
+/* Tabs: without JavaScript every panel shows with its label; the page script
+   adds a tab bar and marks the group data-enhanced */
+.f0-tabs {
+  margin: var(--spacing-6) 0;
+  border: 1px solid var(--color-border-primary);
+  border-radius: var(--radius-md);
+}
+
+.f0-tab {
+  padding: var(--spacing-4);
+}
+
+.f0-tab > :first-child { margin-top: 0; }
+.f0-tab > :last-child { margin-bottom: 0; }
+
+.f0-tab::before {
+  content: attr(data-tab-label);
+  display: block;
+  margin-bottom: var(--spacing-2);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.f0-tabs:not([data-enhanced]) .f0-tab + .f0-tab {
+  border-top: 1px solid var(--color-border-primary);
+}
+
+.f0-tabs[data-enhanced] .f0-tab::before {
+  display: none;
+}
+
+.f0-tab-list {
+  display: flex;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--color-border-primary);
+}
+
+.f0-tab-button {
+  margin-bottom: -1px;
+  padding: var(--spacing-2) var(--spacing-4);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.f0-tab-button:hover {
+  color: var(--color-text-primary);
+}
+
+.f0-tab-button[aria-selected="true"] {
+  border-bottom-color: var(--color-accent);
+  color: var(--color-accent);
+  font-weight: 500;
+}
+
+.f0-tab-button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+/* Steps: every ### heading inside gets a number */
+.f0-steps {
+  counter-reset: f0-step;
+  margin: var(--spacing-6) 0;
+  padding-left: var(--spacing-8);
+  border-left: 1px solid var(--color-border-primary);
+  margin-left: 14px;
+}
+
+.f0-steps h3 {
+  position: relative;
+  counter-increment: f0-step;
+}
+
+.f0-steps h3::before {
+  content: counter(f0-step);
+  position: absolute;
+  left: calc(-1 * var(--spacing-8) - 15px);
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--color-border-primary);
+  border-radius: 50%;
+  background: var(--color-bg-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+/* Cards: a list of links laid out as a grid; each card is clickable */
+.f0-cards > ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--spacing-4);
+  margin: var(--spacing-6) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.f0-cards > ul > li {
+  position: relative;
+  margin: 0;
+  padding: var(--spacing-4);
+  border: 1px solid var(--color-border-primary);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  transition: border-color var(--transition-fast, 0.15s);
+}
+
+.f0-cards > ul > li:hover {
+  border-color: var(--color-accent);
+}
+
+.f0-cards > ul > li > a:first-child {
+  display: block;
+  margin-bottom: var(--spacing-1);
+  font-size: var(--font-size-base, 1rem);
+  font-weight: 600;
+}
+
+.f0-cards > ul > li > a:first-child::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
