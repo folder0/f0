@@ -8,7 +8,7 @@
 -->
 
 <template>
-  <div class="blog-layout" :class="{ 'has-hero': hasHero }">
+  <div class="blog-layout" :class="{ 'has-hero': hasHero }" :data-blog-preset="data?.config.preset || 'classic'">
     <!-- Loading -->
     <div v-if="pending" class="loading">
       <div class="loading-spinner" />
@@ -91,6 +91,8 @@ const route = useRoute()
 const router = useRouter()
 
 const blogPath = computed(() => props.path || '/blog')
+
+useFeedLinks(blogPath)
 const apiPath = computed(() => blogPath.value.replace(/^\//, ''))
 const activeTag = computed(() => (route.query.tag as string) || '')
 const currentPage = computed(() => parseInt(route.query.page as string) || 1)
@@ -104,6 +106,7 @@ const { data, pending } = await useFetch<{
     dateFormat: 'long' | 'short' | 'relative'
     heroImage: string
     heroSubtitle: string
+    preset?: string
   }
   posts: Array<{
     title: string

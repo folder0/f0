@@ -26,6 +26,8 @@
  * ```
  */
 
+import type { ResolvableMeta } from '@unhead/vue'
+
 interface SeoOptions {
   title?: string
   description?: string
@@ -75,18 +77,18 @@ export function useSeo(input: SeoOptions | (() => SeoOptions) = {}) {
     return `${siteUrl}${route.path}`
   })
 
-  // Resolve OG image: explicit → brand default
-  const ogImage = computed(() => {
-    // Brand default is fetched by the layout; we can't access it here without
-    // an extra fetch, so we leave it empty — the layout's useHead will inject
-    // the brand og_image if available.
-    return getOptions().image || ''
-  })
+  // Resolve OG image: explicit → brand og_image (the layout fetches the brand
+  // under the 'brand' key; read it from the payload, no extra request)
+  const { data: brand } = useNuxtData<{ ogImage?: string }>('brand')
+  const ogImage = computed(() => getOptions().image || brand.value?.ogImage || '')
+
+  // og:image must be absolute: the site URL, else this request's origin
+  const requestOrigin = useRequestURL().origin
 
   // Build meta array
   const meta = computed(() => {
     const options = getOptions()
-    const tags: Record<string, string>[] = [
+    const tags: ResolvableMeta[] = [
       { name: 'description', content: description.value },
 
       // Open Graph
@@ -108,9 +110,9 @@ export function useSeo(input: SeoOptions | (() => SeoOptions) = {}) {
 
     // OG Image
     if (ogImage.value) {
-      const imageUrl = ogImage.value.startsWith('http')
+      const imageUrl = /^https?:\/\//.test(ogImage.value)
         ? ogImage.value
-        : siteUrl ? `${siteUrl}${ogImage.value}` : ogImage.value
+        : `${(siteUrl || requestOrigin).replace(/\/$/, '')}${ogImage.value.startsWith('/') ? '' : '/'}${ogImage.value}`
       tags.push({ property: 'og:image', content: imageUrl })
       tags.push({ name: 'twitter:image', content: imageUrl })
     }
@@ -139,15 +141,15 @@ export function useSeo(input: SeoOptions | (() => SeoOptions) = {}) {
   })
 
   const link = computed(() =>
-    canonicalUrl.value ? [{ rel: 'canonical', href: canonicalUrl.value }] : []
+    canonicalUrl.value ? [{ rel: 'canonical' as const, href: canonicalUrl.value }] : []
   )
 
   // Register once with reactive refs so the head updates as inputs change.
-  useHead({
-    title,
-    meta,
-    link,
-  })
+  useHead(() => ({
+    title: title.value,
+    meta: meta.value,
+    link: link.value,
+  }))
 
   return {
     title,

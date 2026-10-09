@@ -14,12 +14,17 @@
  * Cached using content-hash invalidation (same as /llms.txt).
  */
 
-import { readdir, stat } from 'fs/promises'
-import { join, resolve, extname } from 'path'
+import { readdir, stat, readFile } from 'fs/promises'
+import { join, relative, resolve } from 'path'
 import { isMarkdownFile, isJsonSpecFile } from '../utils/markdown'
 import { resolveLayoutForPath } from '../utils/config'
 import { logger } from '../utils/logger'
+import { isConfinedEntry } from '../utils/paths'
 import { createHash } from 'crypto'
+import { f0Config } from '../utils/f0-config'
+import { fileToUrlPath, readFrontmatter } from '../utils/content-core'
+import { hiddenFromListings } from '../utils/drafts'
+import { onContentChange } from '../utils/invalidation'
 
 // =============================================================================
 // TYPES
@@ -36,8 +41,12 @@ interface SitemapEntry {
 // CACHE
 // =============================================================================
 
-let cachedSitemap: string | null = null
+// Cache the host-independent page list, not the XML: the XML embeds the base
+// URL, which comes from the request when NUXT_PUBLIC_SITE_URL is unset, and a
+// cached copy would pin every later response to the first requester's Host.
+let cachedPages: SitemapEntry[] | null = null
 let cachedSitemapHash: string | null = null
+onContentChange('sitemap', () => { cachedPages = null; cachedSitemapHash = null })
 
 // =============================================================================
 // CONTENT SCANNING
@@ -63,19 +72,15 @@ async function collectPages(
         const childUrl = urlPath ? `${urlPath}/${entry.name}` : `/${entry.name}`
         const children = await collectPages(fullPath, contentDir, childUrl)
         entries.push(...children)
-      } else if (isMarkdownFile(entry.name) || isJsonSpecFile(entry.name)) {
-        // Build URL path
-        const slug = entry.name
-          .replace(/^\d{4}-\d{2}-\d{2}-/, '')  // Strip date prefix
-          .replace(/^\d+-/, '')                  // Strip order prefix
-          .replace(extname(entry.name), '')      // Strip extension
+      } else if ((isMarkdownFile(entry.name) || isJsonSpecFile(entry.name)) && await isConfinedEntry(dir, entry, contentDir)) {
+        // Canonical URL, as linked from the sidebar (01-guides/02-setup.md →
+        // /guides/setup, guides/index.md → /guides, home.md → /)
+        const pagePath = fileToUrlPath(relative(contentDir, fullPath))
 
-        // Special case: home.md → /
-        let pagePath: string
-        if (!urlPath && slug === 'home') {
-          pagePath = '/'
-        } else {
-          pagePath = urlPath ? `${urlPath}/${slug}` : `/${slug}`
+        // Drafts are not advertised to crawlers
+        if (isMarkdownFile(entry.name)) {
+          const doc = readFrontmatter(await readFile(fullPath, 'utf-8').catch(() => ''))
+          if (hiddenFromListings(doc.data, 'site')) continue
         }
 
         // Get file stats for lastmod
@@ -89,7 +94,7 @@ async function collectPages(
 
         // Determine changefreq and priority based on content type and depth
         const depth = pagePath.split('/').filter(Boolean).length
-        const layout = resolveLayoutForPath(contentDir, pagePath)
+        const layout = resolveLayoutForPath(contentDir, pagePath, fullPath)
 
         let changefreq: SitemapEntry['changefreq'] = 'monthly'
         let priority = 0.8
@@ -193,7 +198,8 @@ function buildSitemapXml(entries: SitemapEntry[], baseUrl: string): string {
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
-  const contentDir = resolve(process.cwd(), config.contentDir)
+  const settings = f0Config()
+  const contentDir = resolve(process.cwd(), settings.contentDir)
 
   // Determine base URL from config or request
   const requestUrl = getRequestURL(event)
@@ -203,29 +209,28 @@ export default defineEventHandler(async (event) => {
   try {
     // Check cache
     const currentHash = await computeSitemapHash(contentDir)
-    if (cachedSitemap && cachedSitemapHash === currentHash) {
-      setHeader(event, 'Content-Type', 'application/xml; charset=utf-8')
-      setHeader(event, 'Cache-Control', 'public, max-age=3600')
-      return cachedSitemap
+    let pages: SitemapEntry[]
+    if (cachedPages && cachedSitemapHash === currentHash) {
+      pages = cachedPages
+    }
+    else {
+      // One entry per URL (a folder's index.md and a same-named page share one)
+      const seen = new Set<string>()
+      pages = (await collectPages(contentDir, contentDir)).filter(page => !seen.has(page.loc) && seen.add(page.loc))
+
+      // Sort: homepage first, then alphabetically
+      pages.sort((a, b) => {
+        if (a.loc === '/') return -1
+        if (b.loc === '/') return 1
+        return a.loc.localeCompare(b.loc)
+      })
+
+      cachedPages = pages
+      cachedSitemapHash = currentHash
+      logger.info('Sitemap generated', { pages: pages.length })
     }
 
-    // Generate
-    const pages = await collectPages(contentDir, contentDir)
-
-    // Sort: homepage first, then alphabetically
-    pages.sort((a, b) => {
-      if (a.loc === '/') return -1
-      if (b.loc === '/') return 1
-      return a.loc.localeCompare(b.loc)
-    })
-
     const xml = buildSitemapXml(pages, baseUrl)
-
-    // Cache
-    cachedSitemap = xml
-    cachedSitemapHash = currentHash
-
-    logger.info('Sitemap generated', { pages: pages.length })
 
     setHeader(event, 'Content-Type', 'application/xml; charset=utf-8')
     setHeader(event, 'Cache-Control', 'public, max-age=3600')

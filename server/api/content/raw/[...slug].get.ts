@@ -25,83 +25,8 @@
  * - X-Word-Count: 450
  */
 
-import { readFile } from 'fs/promises'
-import { resolve, basename } from 'path'
-import { resolveContentPath } from '../../../utils/navigation'
-import { logger } from '../../../utils/logger'
+import { sendRawMarkdown } from '../../../utils/raw-markdown'
 
-export default defineEventHandler(async (event) => {
-  const config = useRuntimeConfig()
-  const slug = event.context.params?.slug || ''
-  const query = getQuery(event)
-  const download = query.download === 'true'
-  
-  // Security: Block private paths
-  if (slug.includes('private') || slug.includes('..')) {
-    throw createError({
-      statusCode: 403,
-      statusMessage: 'Forbidden',
-    })
-  }
-  
-  // Handle home page
-  const contentSlug = slug === '' ? 'home' : slug
-  
-  try {
-    // Resolve slug to filesystem path
-    const filePath = await resolveContentPath(config.contentDir, contentSlug)
-    
-    if (!filePath || !filePath.endsWith('.md')) {
-      throw createError({
-        statusCode: 404,
-        statusMessage: 'Not Found',
-        data: { message: `Markdown content not found: ${contentSlug}` },
-      })
-    }
-    
-    // Read raw content
-    const content = await readFile(filePath, 'utf-8')
-    
-    // Extract title for headers
-    let title = ''
-    const frontmatterMatch = content.match(/^---\n[\s\S]*?title:\s*["']?([^"'\n]+)["']?[\s\S]*?\n---\n/)
-    if (frontmatterMatch) {
-      title = frontmatterMatch[1]
-    } else {
-      const h1Match = content.match(/^#\s+(.+)$/m)
-      title = h1Match ? h1Match[1] : basename(filePath, '.md')
-    }
-    
-    // Calculate word count (rough estimate)
-    const wordCount = content.split(/\s+/).length
-    
-    // Set headers
-    setHeader(event, 'Content-Type', 'text/markdown; charset=utf-8')
-    setHeader(event, 'X-Page-Title', title)
-    setHeader(event, 'X-Page-Path', `/${contentSlug}`)
-    setHeader(event, 'X-Word-Count', String(wordCount))
-    setHeader(event, 'Cache-Control', 'public, max-age=300') // 5 minute cache
-    
-    // Set download header if requested
-    if (download) {
-      const filename = contentSlug.replace(/\//g, '-') + '.md'
-      setHeader(event, 'Content-Disposition', `attachment; filename="${filename}"`)
-    }
-    
-    return content
-    
-  } catch (error) {
-    // Re-throw HTTP errors
-    if (error && typeof error === 'object' && 'statusCode' in error) {
-      throw error
-    }
-    
-    logger.error('Error loading raw content', { slug: contentSlug })
-    
-    throw createError({
-      statusCode: 500,
-      statusMessage: 'Internal Server Error',
-      data: { message: 'Failed to load content' },
-    })
-  }
+export default defineEventHandler((event) => {
+  return sendRawMarkdown(event, event.context.params?.slug || '', { download: getQuery(event).download === 'true' })
 })

@@ -33,7 +33,12 @@
 
 import { verifyToken, type JwtPayload } from '../utils/jwt'
 import { auditLog, getClientIp } from '../utils/audit'
+import { checkEmailAccess } from '../utils/allowlist'
+import { isSessionRevoked } from '../utils/sessions'
+import { markPrivateResponse } from '../utils/http-cache'
 import { logger } from '../utils/logger'
+import { f0Config } from '../utils/f0-config'
+import { findAccessToken, isAccessToken } from '../utils/access-tokens'
 
 // =============================================================================
 // CONFIGURATION
@@ -46,6 +51,8 @@ const PUBLIC_ROUTES = [
   '/login',
   '/api/auth/request-otp',
   '/api/auth/verify-otp',
+  '/api/auth/logout',       // must always run so it can clear the cookie
+  '/api/auth/session',      // answers "not signed in" instead of 401
   '/_health',
   '/_ready',
   // GitHub webhook authenticates itself via HMAC signature (see webhook.post.ts).
@@ -71,13 +78,14 @@ const BLOCKED_ROUTES = [
 export default defineEventHandler(async (event) => {
   const url = getRequestURL(event)
   const path = url.pathname // Use pathname to exclude query string
-  const config = useRuntimeConfig()
+  const settings = f0Config()
   
   // ---------------------------------------------------------------------------
   // SECURITY: Block access to sensitive paths
   // ---------------------------------------------------------------------------
   for (const blocked of BLOCKED_ROUTES) {
-    if (path.startsWith(blocked) || path.includes('/../')) {
+    // Whole segments only: /private and /private/x are blocked, /private-beta is not
+    if (path === blocked || path.startsWith(blocked + '/') || path.includes('/../')) {
       logger.warn('Blocked access attempt', { path, ip: getClientIp(event) })
       throw createError({
         statusCode: 403,
@@ -87,15 +95,36 @@ export default defineEventHandler(async (event) => {
   }
   
   // ---------------------------------------------------------------------------
+  // FAIL CLOSED: a private site with unusable settings serves nothing
+  // ---------------------------------------------------------------------------
+  // The startup check exits in this case; this covers requests that arrive
+  // before it does. Liveness stays up so the log can be read.
+  if (settings.problems.length > 0 && path !== '/_health') {
+    markPrivateResponse(event)
+    throw createError({
+      statusCode: 503,
+      statusMessage: 'Service Unavailable',
+      data: { message: 'Site configuration is incomplete' },
+    })
+  }
+
+  // ---------------------------------------------------------------------------
   // PUBLIC MODE: Allow all access
   // ---------------------------------------------------------------------------
-  if (config.authMode === 'public') {
+  if (settings.authMode === 'public') {
     return // Continue to route handler
   }
   
   // ---------------------------------------------------------------------------
   // PRIVATE MODE: Check authentication
   // ---------------------------------------------------------------------------
+
+  // Nothing in private mode may be stored by a shared cache, including the
+  // login redirects and 401s below, which never reach the response hook.
+  // /_nuxt/* are fingerprinted build assets with no site content.
+  if (!path.startsWith('/_nuxt/')) {
+    markPrivateResponse(event)
+  }
   
   // Check if route is exempt from auth
   const isPublicRoute = PUBLIC_ROUTES.some(route => 
@@ -107,95 +136,135 @@ export default defineEventHandler(async (event) => {
     return
   }
   
-  // Allow static assets
-  if (path.startsWith('/_nuxt/') || path.startsWith('/assets/') || path.match(/\.(js|css|png|jpg|svg|ico|woff2?)$/)) {
+  // Allow only the app's own fingerprinted build assets (needed to render
+  // /login) and the favicon. Do NOT exempt by file extension: content images
+  // under /api/content/assets/** are private content in private mode.
+  if (path.startsWith('/_nuxt/') || path === '/favicon.ico') {
     return
   }
   
   // ---------------------------------------------------------------------------
   // EXTRACT AND VERIFY TOKEN
   // ---------------------------------------------------------------------------
-  
+
+  // Build the login URL for page redirects, preserving where the user was going.
+  const loginUrl = (reason?: string): string => {
+    const params = new URLSearchParams()
+    if (path !== '/') params.set('redirect', path)
+    if (reason) params.set('reason', reason)
+    const query = params.toString()
+    return query ? `/login?${query}` : '/login'
+  }
+
+  // Reject the request: 401 for API routes (and /mcp, which agents call),
+  // redirect to /login for pages.
+  const isApi = path.startsWith('/api/') || path === '/mcp'
+  const deny = (apiMessage: string, reason?: string, error?: string) => {
+    if (isApi) {
+      throw createError({
+        statusCode: 401,
+        statusMessage: 'Unauthorized',
+        data: error ? { message: apiMessage, error } : { message: apiMessage },
+      })
+    }
+    return sendRedirect(event, loginUrl(reason))
+  }
+
   let token: string | null = null
-  
+  let fromHeader = false
+
   // Try Authorization header first (Bearer token)
   const authHeader = getHeader(event, 'authorization')
   if (authHeader?.startsWith('Bearer ')) {
     token = authHeader.slice(7)
+    fromHeader = true
   }
-  
+
   // Fall back to cookie
   if (!token) {
     token = getCookie(event, 'f0_token') || null
   }
-  
+
   // No token found
   if (!token) {
-    // For API routes, return 401
-    if (path.startsWith('/api/')) {
+    if (isApi) {
       await auditLog(event, 'access_denied', 'anonymous', false, 'no_token', {
         path,
         method: event.method,
       })
-      
-      throw createError({
-        statusCode: 401,
-        statusMessage: 'Unauthorized',
-        data: { message: 'Authentication required' },
-      })
     }
-    
-    // For page routes, redirect to login (avoid redirect loop)
-    const redirectTo = path === '/' ? '' : `?redirect=${encodeURIComponent(path)}`
-    return sendRedirect(event, `/login${redirectTo}`)
+    return deny('Authentication required')
   }
-  
-  // Verify token
-  const result = verifyToken(token)
-  
-  if (!result.valid) {
-    // Clear invalid cookie
-    deleteCookie(event, 'f0_token')
-    
-    const email = result.payload?.email || 'unknown'
-    
-    // Log the token failure
-    await auditLog(
-      event, 
-      result.error === 'expired' ? 'token_expired' : 'token_invalid',
-      email,
-      false,
-      result.error,
-      { path, method: event.method }
-    )
-    
-    // For API routes, return appropriate error
-    if (path.startsWith('/api/')) {
-      throw createError({
-        statusCode: 401,
-        statusMessage: 'Unauthorized',
-        data: { 
-          message: result.error === 'expired' 
-            ? 'Session expired, please log in again' 
-            : 'Invalid authentication token',
-          error: result.error,
-        },
-      })
+
+  // Personal access tokens (private/tokens.json), for tools and agents. Header
+  // only: a browser session is always the cookie.
+  let email: string
+  let jti: string | undefined
+  if (fromHeader && isAccessToken(token)) {
+    const record = await findAccessToken(token, settings.privateDir)
+    if (!record) {
+      await auditLog(event, 'token_invalid', 'unknown', false, 'unknown_access_token', { path, method: event.method })
+      return deny('Invalid or expired access token', undefined, 'invalid')
     }
-    
-    // For page routes, redirect to login
-    const redirectTo = path === '/' ? '' : `?redirect=${encodeURIComponent(path)}`
-    return sendRedirect(event, `/login${redirectTo}&reason=expired`)
+    email = record.email
   }
-  
+  else {
+    // Verify signature and expiry
+    const result = verifyToken(token)
+
+    if (!result.valid || !result.payload?.email) {
+      deleteCookie(event, 'f0_token', { path: '/' })
+      await auditLog(
+        event,
+        result.error === 'expired' ? 'token_expired' : 'token_invalid',
+        result.payload?.email || 'unknown',
+        false,
+        result.error || 'missing_email',
+        { path, method: event.method }
+      )
+      return deny(
+        result.error === 'expired' ? 'Session expired, please log in again' : 'Invalid authentication token',
+        'expired',
+        result.error,
+      )
+    }
+
+    email = result.payload.email
+    jti = result.payload.jti
+  }
+
+  // A signed token is not enough: logged-out sessions and users removed from
+  // the allowlist lose access immediately, not when the 72h token expires.
+  const revoked = await isSessionRevoked(jti)
+  const access = revoked ? 'denied' : await checkEmailAccess(email, settings.privateDir)
+
+  // Allowlist unreadable and never loaded: fail closed, but keep the cookie so
+  // sessions resume once the file is fixed.
+  if (access === 'unavailable') {
+    throw createError({
+      statusCode: 503,
+      statusMessage: 'Service Unavailable',
+      data: { message: 'Access control is temporarily unavailable' },
+    })
+  }
+
+  if (revoked || access !== 'allowed') {
+    deleteCookie(event, 'f0_token', { path: '/' })
+    await auditLog(event, 'token_invalid', email, false, revoked ? 'revoked' : 'not_allowlisted', {
+      path,
+      method: event.method,
+    })
+    return deny('Session is no longer valid, please log in again', 'expired', revoked ? 'revoked' : 'not_allowlisted')
+  }
+
   // ---------------------------------------------------------------------------
   // ATTACH USER TO CONTEXT
   // ---------------------------------------------------------------------------
-  
+
   // Store user info in event context for use in route handlers
   event.context.auth = {
     authenticated: true,
-    email: result.payload?.email,
+    email,
   }
 })
 

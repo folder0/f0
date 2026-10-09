@@ -12,7 +12,10 @@
 import { readdir, readFile } from 'fs/promises'
 import { join, extname, basename } from 'path'
 import { logger } from '../../utils/logger'
+import { resolveContentSubdir } from '../../utils/paths'
 import { extractFrontmatter, isMarkdownFile } from '../../utils/markdown'
+import { f0Config } from '../../utils/f0-config'
+import { hiddenFromListings } from '../../utils/drafts'
 
 interface TagInfo {
   name: string
@@ -21,11 +24,19 @@ interface TagInfo {
 }
 
 export default defineEventHandler(async (event) => {
-  const config = useRuntimeConfig()
+  const settings = f0Config()
   const query = getQuery(event)
 
-  const dirPath = ((query.path as string) || '/').replace(/^\//, '')
-  const fullPath = dirPath ? join(config.contentDir, dirPath) : config.contentDir
+  // Confine ?path= to the content directory; a missing directory lists no tags.
+  const target = await resolveContentSubdir(settings.contentDir, query.path)
+  if (!target.ok) {
+    throw createError({ statusCode: 400, statusMessage: 'Bad Request', data: { message: 'Invalid path' } })
+  }
+  if (!target.exists) {
+    return { tags: [] }
+  }
+  const dirPath = target.rel
+  const fullPath = target.abs
 
   const tagMap = new Map<string, { count: number; posts: string[] }>()
 
@@ -41,7 +52,7 @@ export default defineEventHandler(async (event) => {
       const rawContent = await readFile(filePath, 'utf-8')
       const { frontmatter } = extractFrontmatter(rawContent)
 
-      if (frontmatter.draft === true) continue
+      if (hiddenFromListings(frontmatter, 'blog')) continue
 
       const tags = Array.isArray(frontmatter.tags)
         ? (frontmatter.tags as string[]).map(t => String(t).toLowerCase())

@@ -32,7 +32,12 @@
 import { readdir, readFile, stat } from 'fs/promises'
 import { join, resolve } from 'path'
 import { logger } from '../utils/logger'
-import { markdownToPlainText, isMarkdownFile, extractFrontmatterSafe } from '../utils/markdown'
+import { isConfinedEntry } from '../utils/paths'
+import { markdownToPlainText, isMarkdownFile } from '../utils/markdown'
+import { f0Config } from '../utils/f0-config'
+import { readFrontmatter, stripOrderPrefix } from '../utils/content-core'
+import { hiddenFromListings } from '../utils/drafts'
+import { onContentChange } from '../utils/invalidation'
 
 // =============================================================================
 // TYPES
@@ -51,6 +56,7 @@ interface SectionInfo {
 
 let cachedIndex: string | null = null
 let cachedIndexHash: string | null = null
+onContentChange('llms-index', () => { cachedIndex = null; cachedIndexHash = null })
 
 // =============================================================================
 // CONTENT SCANNING
@@ -76,7 +82,9 @@ async function scanSections(contentDir: string): Promise<Map<string, SectionInfo
         const fullPath = join(dir, entry.name)
 
         if (entry.isDirectory()) {
-          const childPath = sectionPath ? `${sectionPath}/${entry.name}` : `/${entry.name}`
+          // Section paths use URL names (02-reference → /reference), the form
+          // /llms.txt?section= filters on
+          const childPath = sectionPath ? `${sectionPath}/${stripOrderPrefix(entry.name)}` : `/${stripOrderPrefix(entry.name)}`
           const childStats = await walk(fullPath, childPath)
 
           if (childStats.pages > 0) {
@@ -90,10 +98,18 @@ async function scanSections(contentDir: string): Promise<Map<string, SectionInfo
 
           totalPages += childStats.pages
           totalTokens += childStats.tokens
-        } else if (isMarkdownFile(entry.name)) {
+        } else if (isMarkdownFile(entry.name) && await isConfinedEntry(dir, entry, contentDir)) {
+          let content: string
+          try {
+            content = await readFile(fullPath, 'utf-8')
+          } catch {
+            totalPages++
+            totalTokens += 250 // Fallback estimate
+            continue
+          }
+          if (hiddenFromListings(readFrontmatter(content).data, 'site')) continue
           totalPages++
           try {
-            const content = await readFile(fullPath, 'utf-8')
             // Rough token estimate: ~4 chars per token for English
             const plainText = markdownToPlainText(content)
             totalTokens += Math.ceil(plainText.length / 4)
@@ -118,7 +134,7 @@ async function scanSections(contentDir: string): Promise<Map<string, SectionInfo
       if (entry.name.startsWith('.') || entry.name.startsWith('_')) continue
       if (entry.name === 'assets' || entry.name === 'images') continue
 
-      const sectionPath = `/${entry.name}`
+      const sectionPath = `/${stripOrderPrefix(entry.name)}`
       const fullPath = join(contentDir, entry.name)
       const stats = await walk(fullPath, sectionPath)
 
@@ -139,10 +155,14 @@ async function scanSections(contentDir: string): Promise<Map<string, SectionInfo
       if (entry.isDirectory()) continue
       if (entry.name.startsWith('.') || entry.name.startsWith('_')) continue
       if (entry.name === 'nav.md') continue
-      if (isMarkdownFile(entry.name)) {
+      if (isMarkdownFile(entry.name) && await isConfinedEntry(contentDir, entry, contentDir)) {
         rootPages++
         try {
           const content = await readFile(join(contentDir, entry.name), 'utf-8')
+          if (hiddenFromListings(readFrontmatter(content).data, 'site')) {
+            rootPages--
+            continue
+          }
           rootTokens += Math.ceil(markdownToPlainText(content).length / 4)
         } catch {
           rootTokens += 250
@@ -204,7 +224,8 @@ async function computeIndexHash(contentDir: string): Promise<string> {
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
-  const contentDir = resolve(process.cwd(), config.contentDir)
+  const settings = f0Config()
+  const contentDir = resolve(process.cwd(), settings.contentDir)
   const siteName = config.public.siteName || 'f0'
 
   try {

@@ -26,18 +26,21 @@
  * - Standard GFM: tables, task lists, strikethrough, autolinks
  */
 
-import { unified } from 'unified'
+import { unified, type Processor } from 'unified'
+import { firstHeading, readFrontmatter, resolveAssetUrl, stringField, titleFromFileName } from './content-core'
+import type { VFile } from 'vfile'
 import remarkParse from 'remark-parse'
 import remarkGfm from 'remark-gfm'
 import remarkRehype from 'remark-rehype'
 import rehypeSlug from 'rehype-slug'
 import rehypeHighlight from 'rehype-highlight'
 import rehypeStringify from 'rehype-stringify'
+import rehypeRaw from 'rehype-raw'
 import { visit } from 'unist-util-visit'
 import type { Root, Text, Paragraph } from 'mdast'
 import type { Root as HastRoot, Element } from 'hast'
-import yaml from 'yaml'
 import { logger } from './logger'
+import { rehypeDropTableWhitespace, rehypeRestoreTableWhitespace, rehypeStripDangerous, stabilizeHtml } from './sanitize'
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -113,8 +116,8 @@ function remarkYouTube() {
       const [, title, videoId] = match
       
       // Replace the paragraph with our custom YouTube node
-      // @ts-expect-error - Adding custom node type
-      parent.children[index] = {
+      const siblings = parent.children as unknown[]
+      siblings[index] = {
         type: 'youtube',
         data: {
           hName: 'div',
@@ -155,10 +158,114 @@ function remarkYouTube() {
  * 
  * Supported types: info, warning, error, success, tip, note, danger
  */
+// =============================================================================
+// CODE MASKING
+// =============================================================================
+
+interface FencedBlock {
+  /** The block exactly as written, fences included */
+  raw: string
+  /** The lines between the fences */
+  body: string
+}
+
+const MASK_TOKEN = /\uE000(F|C)(\d+)\uE001/g
+
+/**
+ * Replace fenced code blocks (``` and ~~~, any indentation, unclosed blocks
+ * running to the end) with one placeholder line each, so text rules (callout
+ * and embed syntax, plaintext conversion) never rewrite code. A page that
+ * documents `:::info` inside a code fence keeps it as code.
+ */
+function maskFencedCode(markdown: string): { text: string, blocks: FencedBlock[] } {
+  const blocks: FencedBlock[] = []
+  const out: string[] = []
+  const lines = markdown.split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    const open = lines[i].match(/^[ \t]*(`{3,}|~{3,})(.*)$/)
+    if (!open || (open[1][0] === '`' && open[2].includes('`'))) {
+      out.push(lines[i])
+      continue
+    }
+    const fence = open[1]
+    let end = i + 1
+    while (end < lines.length) {
+      const close = lines[end].match(/^[ \t]*(`{3,}|~{3,})[ \t]*$/)
+      if (close && close[1][0] === fence[0] && close[1].length >= fence.length) break
+      end++
+    }
+    const last = Math.min(end, lines.length - 1)
+    blocks.push({ raw: lines.slice(i, last + 1).join('\n'), body: lines.slice(i + 1, end).join('\n') })
+    out.push(`\uE000F${blocks.length - 1}\uE001`)
+    i = last
+  }
+  return { text: out.join('\n'), blocks }
+}
+
+/** Put masked fenced blocks back exactly as written. */
+function unmaskFencedCode(text: string, blocks: FencedBlock[]): string {
+  return text.replace(MASK_TOKEN, (token, kind, index) => (kind === 'F' ? blocks[Number(index)]?.raw ?? token : token))
+}
+
+/**
+ * Apply the directive preprocessors (callouts, embeds, :::api) to everything
+ * except fenced code.
+ */
+function preprocessDirectives(markdown: string): string {
+  const { text, blocks } = maskFencedCode(markdown)
+  return unmaskFencedCode(preprocessApiBlocks(preprocessEmbeds(preprocessComponents(preprocessCallouts(text)))), blocks)
+}
+
+// =============================================================================
+// AUTHORING COMPONENTS (:::tabs, :::steps, :::cards)
+// =============================================================================
+
+// A component block whose body contains no other component opening, so
+// nested blocks are converted innermost first
+const COMPONENT_BLOCK = /^:::(tabs|steps|cards)[ \t]*\n((?:(?!^:::(?:tabs|steps|cards)\b)[\s\S])*?)\n:::[ \t]*$/gm
+
+/**
+ * Convert authoring components to HTML blocks whose content stays Markdown:
+ *
+ *   :::tabs                 :::steps              :::cards
+ *   @tab npm                ### Install           - [Guides](/guides) — Start here
+ *   ```bash ... ```         Run the installer.    - [API](/api) — Endpoints
+ *   @tab pnpm               ### Configure         :::
+ *   ...                     ...
+ *   :::                     :::
+ *
+ * Tabs work without JavaScript (all panels shown, each labelled); the page
+ * script turns them into a tab bar. Steps number each ### heading. Cards lay
+ * out a list of links as a grid.
+ */
+function preprocessComponents(markdown: string): string {
+  let text = markdown
+  for (let pass = 0; pass < 10; pass++) {
+    const next = text.replace(COMPONENT_BLOCK, (_match, kind: string, body: string) => {
+      if (kind !== 'tabs') {
+        return `<div class="f0-${kind}">\n\n${body.trim()}\n\n</div>`
+      }
+      const panels = body.split(/^@tab[ \t]+(.+?)[ \t]*$/m)
+      const intro = panels.shift()?.trim() ?? ''
+      const tabs: string[] = []
+      for (let i = 0; i < panels.length; i += 2) {
+        tabs.push(`<div class="f0-tab" data-tab-label="${escapeHtml(panels[i])}">\n\n${(panels[i + 1] ?? '').trim()}\n\n</div>`)
+      }
+      return `${intro ? `${intro}\n\n` : ''}<div class="f0-tabs">\n\n${tabs.join('\n\n')}\n\n</div>`
+    })
+    if (next === text) break
+    text = next
+  }
+  return text
+}
+
 function preprocessCallouts(markdown: string): string {
   // Match callout blocks: :::type followed by content followed by :::
   // Use a regex that captures the type and content
-  const calloutRegex = /^:::(info|warning|error|success|tip|note|danger)\s*\n([\s\S]*?)\n:::\s*$/gm
+  // [ \t]* rather than \s*: \s* also consumed the blank line after the closing
+  // :::, which glued the next paragraph (often an image) into the raw <div>
+  // block, where it rendered as literal Markdown text
+  const calloutRegex = /^:::(info|warning|error|success|tip|note|danger)[ \t]*\n([\s\S]*?)\n:::[ \t]*$/gm
   
   return markdown.replace(calloutRegex, (match, type, content) => {
     // Normalize the type for CSS class
@@ -213,13 +320,16 @@ function remarkCallouts() {
       
       // Remove the closing ::: from last text node
       const lastIdx = newChildren.length - 1
-      if (newChildren[lastIdx].type === 'text') {
-        const lastText = (newChildren[lastIdx] as Text).value
-        (newChildren[lastIdx] as Text).value = lastText.replace(/\s*:::$/, '')
+      const lastNode = newChildren[lastIdx]
+      if (lastNode.type === 'text') {
+        // (Two statements: written as one expression across lines, the cast on
+        // the second line was parsed as a call and every one-line callout
+        // turned the page into an error box)
+        lastNode.value = lastNode.value.replace(/\s*:::$/, '')
       }
       
-      // @ts-expect-error - Adding custom node structure
-      parent.children[index] = {
+      const siblings = parent.children as unknown[]
+      siblings[index] = {
         type: 'callout',
         data: {
           hName: 'div',
@@ -510,8 +620,8 @@ function remarkApiEndpoints() {
         const summary = lines[0] || ''
         const description = lines.slice(1).join('\n').trim()
         
-        // @ts-expect-error - Adding custom node structure
-        parent.children[index] = {
+        const siblings = parent.children as unknown[]
+        siblings[index] = {
           type: 'apiEndpoint',
           data: {
             hName: 'div',
@@ -569,7 +679,6 @@ function remarkApiEndpoints() {
       
       // If we found a closing tag, transform the nodes
       if (endIndex < parent.children.length) {
-        // @ts-expect-error - Adding custom node structure
         const apiNode = {
           type: 'apiEndpoint',
           data: {
@@ -587,7 +696,8 @@ function remarkApiEndpoints() {
           ],
         }
         
-        parent.children.splice(index, endIndex - index + 1, apiNode)
+        const siblings = parent.children as unknown[]
+        siblings.splice(index, endIndex - index + 1, apiNode)
       }
     })
   }
@@ -637,14 +747,8 @@ function rehypeResponsiveImages() {
       // Skip data URIs
       if (src.startsWith('data:')) return
 
-      // Resolve relative paths to API URLs
-      let apiSrc = src
-      if (src.startsWith('./assets/') || src.startsWith('assets/')) {
-        apiSrc = '/api/content/' + src.replace(/^\.\//, '')
-      } else if (src.startsWith('./') || !src.startsWith('/')) {
-        // Other relative paths — prefix with API
-        apiSrc = '/api/content/assets/' + src.replace(/^\.\//, '')
-      }
+      // Resolve relative paths to API URLs (same rule as cover_image, brand assets)
+      const apiSrc = resolveAssetUrl(src)
 
       const alt = (node.properties?.alt as string) || ''
       const ext = apiSrc.split('.').pop()?.toLowerCase() || ''
@@ -697,8 +801,12 @@ function rehypeResponsiveImages() {
  * Rehype plugin to extract table of contents from headings
  * Collects all H2 and H3 headings with their slugs
  */
-function rehypeExtractToc(toc: TocItem[]) {
-  return (tree: HastRoot) => {
+function rehypeExtractToc() {
+  return (tree: HastRoot, file: VFile) => {
+    // Per-document output goes on the file, so one frozen processor can be
+    // shared by every render.
+    const toc: TocItem[] = []
+    file.data.toc = toc
     visit(tree, 'element', (node: Element) => {
       if (!['h2', 'h3'].includes(node.tagName)) return
       
@@ -721,6 +829,23 @@ function rehypeExtractToc(toc: TocItem[]) {
       } else if (level === 3 && toc.length > 0) {
         // H3 goes under the most recent H2
         toc[toc.length - 1].children.push(tocItem)
+      }
+    })
+  }
+}
+
+/**
+ * Rehype plugin: resolve relative src on <img> written as raw HTML in
+ * Markdown (<img src="./assets/x.png">). Markdown images are handled earlier
+ * by rehypeResponsiveImages; raw HTML only becomes elements after rehype-raw.
+ */
+function rehypeResolveRawImageSources() {
+  return (tree: HastRoot) => {
+    visit(tree, 'element', (node: Element) => {
+      if (node.tagName !== 'img' && node.tagName !== 'source') return
+      const src = node.properties?.src
+      if (typeof src === 'string' && src) {
+        node.properties = { ...node.properties, src: resolveAssetUrl(src) }
       }
     })
   }
@@ -840,30 +965,17 @@ export function extractFrontmatter(content: string): {
   frontmatter: MarkdownFrontmatter
   content: string 
 } {
-  const frontmatterRegex = /^---\n([\s\S]*?)\n---\n/
-  const match = content.match(frontmatterRegex)
-  
-  if (!match) {
-    return { frontmatter: {}, content }
-  }
-  
-  try {
-    const frontmatter = yaml.parse(match[1]) as MarkdownFrontmatter
-    const contentWithoutFrontmatter = content.slice(match[0].length)
-    return { frontmatter, content: contentWithoutFrontmatter }
-  } catch {
-    // If YAML parsing fails, treat it as no frontmatter
-    logger.warn('Failed to parse frontmatter, treating as content')
-    return { frontmatter: {}, content }
-  }
+  // One reader for all of f0 (BOM, CRLF, empty blocks, missing final newline)
+  const { data, body } = readFrontmatter(content)
+  return { frontmatter: data as MarkdownFrontmatter, content: body }
 }
 
 /**
  * Extract the first H1 heading from markdown as fallback title
  */
 function extractTitle(content: string): string {
-  const match = content.match(/^#\s+(.+)$/m)
-  return match ? match[1].trim() : ''
+  // Fence-aware: a shell comment inside a code block is not a title
+  return firstHeading(content) ?? ''
 }
 
 // =============================================================================
@@ -881,7 +993,16 @@ export function markdownToPlainText(content: string): string {
   // Remove frontmatter
   const { content: mdContent } = extractFrontmatter(content)
   
-  let text = mdContent
+  // Code is masked while the text rules run, then restored: inline code
+  // without backticks, fenced code without its fence lines. (The rules used to
+  // run over code too: NUXT_PUBLIC_SITE_NAME lost its underscores and a bash
+  // `# comment` became a heading.)
+  const { text: masked, blocks } = maskFencedCode(mdContent)
+  const inlineCode: string[] = []
+  let text = masked.replace(/`([^`\n]+)`/g, (_match, code: string) => {
+    inlineCode.push(code)
+    return `\uE000C${inlineCode.length - 1}\uE001`
+  })
   
   // Convert YouTube embeds to text reference
   text = text.replace(
@@ -895,6 +1016,8 @@ export function markdownToPlainText(content: string): string {
   // Convert callouts to plain text (keep content, remove markers)
   text = text.replace(/^:::api\s+(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)\s+(.+?)\s*$/gm, '$1 $2')
   text = text.replace(/:::(info|warning|error|success)\s*/g, '')
+  text = text.replace(/^:::(tabs|steps|cards)[ \t]*$/gm, '')
+  text = text.replace(/^@tab[ \t]+(.+?)[ \t]*$/gm, '$1:')
   text = text.replace(/:::\s*/g, '')
   
   // Convert headings (keep text, indicate level)
@@ -906,22 +1029,24 @@ export function markdownToPlainText(content: string): string {
   // Convert images to text description
   text = text.replace(/!\[([^\]]*)\]\([^)]+\)/g, '[Image: $1]')
   
-  // Remove inline code backticks (keep content)
-  text = text.replace(/`([^`]+)`/g, '$1')
-  
-  // Remove code block markers (keep content)
-  text = text.replace(/```[\w]*\n/g, '\n')
-  text = text.replace(/```/g, '')
-  
-  // Remove bold/italic markers
-  text = text.replace(/\*\*([^*]+)\*\*/g, '$1')
-  text = text.replace(/\*([^*]+)\*/g, '$1')
-  text = text.replace(/__([^_]+)__/g, '$1')
-  text = text.replace(/_([^_]+)_/g, '$1')
+  // Remove bold/italic markers. Emphasis does not start or end next to a
+  // space (so "*.md and *.json" survives), and underscores inside words are
+  // not emphasis (so snake_case and SCREAMING_CASE survive).
+  text = text.replace(/\*\*(?!\s)([^*\n]+?)(?<!\s)\*\*/g, '$1')
+  text = text.replace(/\*(?!\s)([^*\n]+?)(?<!\s)\*/g, '$1')
+  text = text.replace(/(^|[^\p{L}\p{N}_])__(?!\s)([^_\n]+?)(?<!\s)__(?![\p{L}\p{N}_])/gu, '$1$2')
+  text = text.replace(/(^|[^\p{L}\p{N}_])_(?!\s)([^_\n]+?)(?<!\s)_(?![\p{L}\p{N}_])/gu, '$1$2')
   
   // Remove horizontal rules
   text = text.replace(/^---+$/gm, '')
   text = text.replace(/^\*\*\*+$/gm, '')
+  
+  // Restore code
+  text = text.replace(MASK_TOKEN, (token, kind, index) => {
+    if (kind === 'C') return inlineCode[Number(index)] ?? token
+    const block = blocks[Number(index)]
+    return block ? `\n${block.body}\n` : token
+  })
   
   // Clean up excessive whitespace
   text = text.replace(/\n{3,}/g, '\n\n')
@@ -935,28 +1060,15 @@ export function markdownToPlainText(content: string): string {
 // =============================================================================
 
 /**
- * Parse a markdown file and return HTML, TOC, and metadata
- * 
- * @param content - Raw markdown content including frontmatter
- * @returns ParsedMarkdown object with all extracted data
+ * The rendering pipeline, built once and frozen. Every plugin is stateless
+ * per document (the TOC is written to file.data), so all renders share it
+ * instead of rebuilding the plugin chain, highlighter included, per page.
  */
-export async function parseMarkdown(content: string): Promise<ParsedMarkdown> {
-  // Extract frontmatter
-  const { frontmatter, content: mdContent } = extractFrontmatter(content)
-  
-  // Pre-process callouts before remark parsing
-  // This converts :::type ... ::: blocks to HTML divs
-  const preprocessedContent = preprocessApiBlocks(preprocessEmbeds(preprocessCallouts(mdContent)))
-  
-  // Extract title from first H1 as fallback
-  const extractedTitle = extractTitle(preprocessedContent)
-  
-  // TOC will be populated by the rehype plugin
-  const toc: TocItem[] = []
-  
-  try {
-    // Build the processing pipeline
-    const processor = unified()
+let markdownProcessor: Processor<any, any, any, any, any> | null = null
+
+function getMarkdownProcessor() {
+  if (!markdownProcessor) {
+    markdownProcessor = unified()
       // Parse markdown to AST
       .use(remarkParse)
       // Add GFM support (tables, task lists, strikethrough, autolinks)
@@ -973,18 +1085,50 @@ export async function parseMarkdown(content: string): Promise<ParsedMarkdown> {
       .use(rehypeSlug)
       // Responsive images (path resolution + srcset + lazy loading)
       .use(rehypeResponsiveImages)
-      // Extract TOC from headings
-      .use(() => rehypeExtractToc(toc))
+      // Extract TOC from headings (into file.data.toc)
+      .use(rehypeExtractToc)
       // Syntax highlighting for code blocks (disable auto-detect to prevent errors)
       .use(rehypeHighlight, { detect: false, ignoreMissing: true })
       // Wrap code blocks with copy button UI
       .use(rehypeCodeBlocks)
+      // Parse raw HTML (author HTML and f0's preprocessed blocks) into real
+      // nodes, then strip script-capable constructs. Runs after slugs and TOC,
+      // so heading anchors are unaffected.
+      .use(rehypeDropTableWhitespace)
+      .use(rehypeRaw)
+      .use(rehypeResolveRawImageSources)
+      .use(rehypeRestoreTableWhitespace)
+      .use(rehypeStripDangerous)
       // Convert to HTML string
       .use(rehypeStringify, { allowDangerousHtml: true })
-    
-    // Process the markdown
-    const result = await processor.process(preprocessedContent)
-    const html = String(result)
+      .freeze() as unknown as Processor<any, any, any, any, any>
+  }
+  return markdownProcessor
+}
+
+/**
+ * Parse a markdown file and return HTML, TOC, and metadata
+ * 
+ * @param content - Raw markdown content including frontmatter
+ * @returns ParsedMarkdown object with all extracted data
+ */
+export async function parseMarkdown(content: string, fallbackTitle: string = 'Untitled'): Promise<ParsedMarkdown> {
+  // Extract frontmatter
+  const { frontmatter, content: mdContent } = extractFrontmatter(content)
+  
+  // Pre-process callouts before remark parsing
+  // This converts :::type ... ::: blocks to HTML divs
+  const preprocessedContent = preprocessDirectives(mdContent)
+  
+  // Extract title from first H1 as fallback
+  const extractedTitle = extractTitle(preprocessedContent)
+  
+  try {
+    // Process the markdown, then re-parse the HTML the way the browser will
+    // and sanitize again until stable (defeats mutation XSS)
+    const result = await getMarkdownProcessor().process(preprocessedContent)
+    const html = stabilizeHtml(String(result))
+    const toc = (result.data.toc as TocItem[] | undefined) ?? []
     
     // Generate plain text for LLM
     const plainText = markdownToPlainText(content)
@@ -994,7 +1138,7 @@ export async function parseMarkdown(content: string): Promise<ParsedMarkdown> {
       frontmatter,
       toc,
       plainText,
-      title: frontmatter.title || extractedTitle || 'Untitled',
+      title: stringField(frontmatter, 'title') ?? (extractedTitle || fallbackTitle),
     }
   } catch (error) {
     logger.error('Error parsing content', { error: error instanceof Error ? error.message : String(error) })
@@ -1005,7 +1149,7 @@ export async function parseMarkdown(content: string): Promise<ParsedMarkdown> {
       frontmatter,
       toc: [],
       plainText: mdContent,
-      title: frontmatter.title || extractedTitle || 'Untitled',
+      title: stringField(frontmatter, 'title') ?? (extractedTitle || fallbackTitle),
     }
   }
 }
@@ -1022,7 +1166,7 @@ export function generateExcerpt(markdownBody: string, maxLength: number = 160): 
   let text = markdownBody
 
   // Remove frontmatter if accidentally included
-  text = text.replace(/^---\n[\s\S]*?\n---\n?/, '')
+  text = readFrontmatter(text).body
 
   // Remove code blocks
   text = text.replace(/```[\s\S]*?```/g, '')
@@ -1080,7 +1224,7 @@ export function generateExcerpt(markdownBody: string, maxLength: number = 160): 
  */
 export function calculateReadingTime(markdownBody: string): number {
   // Strip frontmatter
-  const text = markdownBody.replace(/^---\n[\s\S]*?\n---\n?/, '')
+  const text = readFrontmatter(markdownBody).body
   const words = text.split(/\s+/).filter(w => w.length > 0).length
   return Math.max(1, Math.ceil(words / 200))
 }
@@ -1145,15 +1289,8 @@ export function extractFrontmatterSafe(content: string): MarkdownFrontmatter {
  */
 export function extractTitleSafe(content: string, fallback: string = 'Untitled'): string {
   try {
-    // Try frontmatter title first
-    const fm = extractFrontmatterSafe(content)
-    if (fm.title && typeof fm.title === 'string') return fm.title
-
-    // Try first H1
-    const match = content.match(/^#\s+(.+)$/m)
-    if (match) return match[1].trim()
-
-    return fallback
+    const doc = readFrontmatter(content)
+    return stringField(doc.data, 'title') ?? firstHeading(doc.body) ?? fallback
   } catch {
     return fallback
   }
@@ -1175,9 +1312,12 @@ export function extractTitleSafe(content: string, fallback: string = 'Untitled')
  * @returns ParsedMarkdown — always succeeds, never throws
  */
 export async function parseMarkdownSafe(content: string, filePath: string = 'unknown'): Promise<ParsedMarkdown> {
+  // Pages without a title or H1 are named after their file, never 'Untitled'
+  // and never the absolute path on the server
+  const fallbackTitle = filePath === 'unknown' ? 'Untitled' : titleFromFileName(filePath)
   // Guard: reject files over MAX_PARSE_SIZE
   if (content.length > MAX_PARSE_SIZE) {
-    const title = extractTitleSafe(content, filePath)
+    const title = extractTitleSafe(content, fallbackTitle)
     const isProduction = process.env.NODE_ENV === 'production'
     return {
       html: `<div class="callout callout-warning">
@@ -1191,10 +1331,10 @@ export async function parseMarkdownSafe(content: string, filePath: string = 'unk
   }
 
   try {
-    return await parseMarkdown(content)
+    return await parseMarkdown(content, fallbackTitle)
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
-    const title = extractTitleSafe(content, filePath)
+    const title = extractTitleSafe(content, fallbackTitle)
     const isProduction = process.env.NODE_ENV === 'production'
 
     // Log the error with context

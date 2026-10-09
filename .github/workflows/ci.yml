@@ -1,0 +1,83 @@
+# Runs on every push to the main branches and on pull requests, and as the
+# gate in front of the release workflow (workflow_call).
+# Actions are pinned to commit SHAs; Dependabot keeps them current.
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+# github.workflow is the caller's name when called from Release, so the two
+# runs for one push do not cancel each other.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Unit and contract tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Unit tests
+        run: npm test
+      - name: Type check
+        run: npm run typecheck
+      # Build with canary values in every secret-bearing variable. Settings are
+      # read at runtime, so none of them may appear in the built output (that
+      # output is what goes into the image).
+      - name: Build with canary secrets in the environment
+        env:
+          CANARY: f0-leak-canary-${{ github.run_id }}
+        run: |
+          export NUXT_JWT_SECRET="$CANARY" JWT_SECRET="$CANARY" \
+            NUXT_AWS_ACCESS_KEY_ID="$CANARY" AWS_ACCESS_KEY_ID="$CANARY" \
+            NUXT_AWS_SECRET_ACCESS_KEY="$CANARY" AWS_SECRET_ACCESS_KEY="$CANARY" \
+            NUXT_GITHUB_WEBHOOK_SECRET="$CANARY" GITHUB_WEBHOOK_SECRET="$CANARY" \
+            NUXT_EMAIL_FROM="$CANARY" EMAIL_FROM="$CANARY" \
+            NUXT_AUTH_MODE="$CANARY" AUTH_MODE="$CANARY"
+          npm run build
+          if grep -rl "$CANARY" .output; then
+            echo "::error::Build output contains a value from the build environment"
+            exit 1
+          fi
+      - name: Contract tests against the built server
+        run: npm run test:contract
+
+  docker:
+    name: Docker image builds and becomes healthy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          push: false
+          tags: f0:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Start the container and wait for the health check
+        run: |
+          docker run -d --name f0 f0:ci
+          for _ in $(seq 1 60); do
+            status=$(docker inspect -f '{{.State.Health.Status}}' f0)
+            [ "$status" = healthy ] && break
+            sleep 1
+          done
+          docker logs f0
+          test "$status" = healthy

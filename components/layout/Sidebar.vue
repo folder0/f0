@@ -54,7 +54,7 @@ PROPS:
     />
     
     <!-- Docs navigation tree -->
-    <nav v-else class="sidebar-nav">
+    <nav v-else class="sidebar-nav" aria-label="Section">
       <div
         v-for="item in currentSidebar"
         :key="item.path"
@@ -76,7 +76,7 @@ defineProps<{
 defineEmits(['close'])
 
 // Navigation
-const { currentSidebar, currentSection, loading, fetchNavigation } = useNavigation()
+const { currentSidebar, currentSection, loading, ensureNavigation } = useNavigation()
 
 // Sidebar collapse state (for blog reading mode)
 const { isCollapsed, expand } = useSidebarCollapse()
@@ -105,9 +105,10 @@ watch(isBlogSection, (isBlog) => {
 
 const blogSectionPath = computed(() => currentSection.value)
 
-// Fetch navigation on mount
+// The layout loads navigation during server rendering; this covers pages
+// rendered without it
 onMounted(() => {
-  fetchNavigation()
+  ensureNavigation()
 })
 </script>
 

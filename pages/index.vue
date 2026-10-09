@@ -76,6 +76,9 @@ const { data: content, pending, error } = await useFetch('/api/content/home', {
   }
 })
 
+// Advertise the page's Markdown source to agents and tools
+useHead({ link: [{ rel: 'alternate', type: 'text/markdown', href: '/home.md' }] })
+
 // ---------------------------------------------------------------------------
 // TOC
 // ---------------------------------------------------------------------------

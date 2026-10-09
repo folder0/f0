@@ -55,6 +55,7 @@ export type AuditEventType =
   | 'token_expired'
   | 'access_denied'
   | 'allowlist_rejected'
+  | 'logout'
 
 export interface AuditLogEntry {
   timestamp: string

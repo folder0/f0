@@ -37,10 +37,13 @@
 import { readdir, readFile, stat } from 'fs/promises'
 import { join, relative, extname, basename } from 'path'
 import { buildNavigation, type TopNavItem, type SidebarItem } from './navigation'
-import { markdownToPlainText, isMarkdownFile, isJsonSpecFile, extractFrontmatter, extractDateFromFilename, extractFrontmatterSafe } from './markdown'
+import { markdownToPlainText, isMarkdownFile, isJsonSpecFile, extractDateFromFilename } from './markdown'
 import { parseApiSpec, apiSpecToPlainText } from './openapi-parser'
 import { resolveLayoutForPath } from './config'
 import { logger } from './logger'
+import { isConfinedEntry } from './paths'
+import { readFrontmatter, resolvePageTitle } from './content-core'
+import { hiddenFromListings } from './drafts'
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -116,10 +119,12 @@ async function collectContent(
         // Recurse into subdirectory
         const subItems = await collectContent(entryPath, contentDir, entryUrlPath)
         items.push(...subItems)
-      } else if (isMarkdownFile(entry.name)) {
+      } else if (isMarkdownFile(entry.name) && await isConfinedEntry(dirPath, entry, contentDir)) {
         // Process markdown file — skip on failure rather than crashing
         try {
           const rawContent = await readFile(entryPath, 'utf-8')
+          const doc = readFrontmatter(rawContent)
+          if (hiddenFromListings(doc.data, 'site')) continue
           
           // Use safe plain text extraction
           let plainText: string
@@ -128,30 +133,20 @@ async function collectContent(
           } catch {
             // If even plain text extraction fails, use raw content stripped of frontmatter
             logger.warn('Plain text extraction failed, using raw content', { path: entryPath })
-            const fmEnd = rawContent.match(/^---\n[\s\S]*?\n---\n/)
-            plainText = fmEnd ? rawContent.slice(fmEnd[0].length) : rawContent
+            plainText = doc.body
           }
         
-        // Extract title from frontmatter or H1
-        let title = entry.name.replace(/^\d+-/, '').replace(/\.md$/, '')
-        const titleMatch = rawContent.match(/^#\s+(.+)$/m)
-        if (titleMatch) {
-          title = titleMatch[1]
-        }
-        const fmMatch = rawContent.match(/^---\n[\s\S]*?title:\s*["']?([^"'\n]+)["']?[\s\S]*?\n---/m)
-        if (fmMatch) {
-          title = fmMatch[1]
-        }
+        // Same title rule as the page (frontmatter title, H1, file name)
+        const title = resolvePageTitle(doc, entry.name)
         
-        // Extract order
+        // Order: frontmatter `order`, then the file name's number prefix
         let order = 999
         const orderMatch = entry.name.match(/^(\d+)-/)
         if (orderMatch) {
           order = parseInt(orderMatch[1], 10)
         }
-        const fmOrderMatch = rawContent.match(/^---\n[\s\S]*?order:\s*(\d+)[\s\S]*?\n---/m)
-        if (fmOrderMatch) {
-          order = parseInt(fmOrderMatch[1], 10)
+        if (typeof doc.data.order === 'number' && Number.isInteger(doc.data.order) && doc.data.order >= 0) {
+          order = doc.data.order
         }
         
         items.push({
@@ -163,9 +158,9 @@ async function collectContent(
           // Check if this file is in a blog directory and add metadata
           blogMeta: (() => {
             try {
-              const layout = resolveLayoutForPath(contentDir, entryUrlPath)
+              const layout = resolveLayoutForPath(contentDir, entryUrlPath, entryPath)
               if (layout === 'blog') {
-                const { frontmatter } = extractFrontmatter(rawContent)
+                const frontmatter = doc.data
                 let date = ''
                 if (frontmatter.date) {
                   const d = frontmatter.date
@@ -192,7 +187,7 @@ async function collectContent(
             error: fileError instanceof Error ? fileError.message : String(fileError),
           })
         }
-      } else if (isJsonSpecFile(entry.name)) {
+      } else if (isJsonSpecFile(entry.name) && await isConfinedEntry(dirPath, entry, contentDir)) {
         // Process API spec file
         try {
           const spec = await parseApiSpec(entryPath)

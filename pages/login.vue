@@ -13,7 +13,7 @@
 -->
 
 <template>
-  <div class="login-container">
+  <main class="login-container">
     <Head>
       <Title>Login - {{ siteName }}</Title>
     </Head>
@@ -99,7 +99,7 @@
     <p class="login-footer">
       Protected documentation powered by f0
     </p>
-  </div>
+  </main>
 </template>
 
 <script setup lang="ts">
@@ -195,7 +195,7 @@ async function verifyOtp() {
   error.value = ''
   
   try {
-    const response = await $fetch<{ token: string }>('/api/auth/verify-otp', {
+    const response = await $fetch<{ user: { email: string } }>('/api/auth/verify-otp', {
       method: 'POST',
       body: { 
         email: email.value,
@@ -203,8 +203,8 @@ async function verifyOtp() {
       },
     })
     
-    // Store token and redirect
-    login(response.token)
+    // The server set the httpOnly session cookie; update state and redirect
+    login(response.user)
     
     // Redirect to original destination or home
     const redirect = route.query.redirect as string || '/'

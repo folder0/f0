@@ -21,13 +21,17 @@
  * user request is fast.
  */
 
-import { existsSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { readdir } from 'fs/promises'
 import { resolve, join } from 'path'
 import { logger } from '../utils/logger'
+import { isConfinedEntry } from '../utils/paths'
 import { prewarmCache } from '../utils/cache'
 import { getCachedLlmsTxt } from '../utils/llms-cache'
 import { isMarkdownFile } from '../utils/markdown'
+import { markWarm } from '../utils/readiness'
+import { buildNavigation, resolveContentPath, type SidebarItem } from '../utils/navigation'
+import { f0Config } from '../utils/f0-config'
 
 /**
  * Recursively scan content directory for all markdown files.
@@ -48,7 +52,7 @@ async function scanContentFiles(dir: string): Promise<string[]> {
 
         if (entry.isDirectory()) {
           await walk(fullPath)
-        } else if (isMarkdownFile(entry.name)) {
+        } else if (isMarkdownFile(entry.name) && await isConfinedEntry(currentDir, entry, dir)) {
           files.push(fullPath)
         }
       }
@@ -61,13 +65,46 @@ async function scanContentFiles(dir: string): Promise<string[]> {
   return files
 }
 
+/**
+ * Pages most visitors land on first: home, each internal top-navigation
+ * target, and the first page of each section's sidebar.
+ */
+async function criticalPages(contentDir: string): Promise<string[]> {
+  const files = new Set<string>()
+  const add = async (urlPath: string) => {
+    const slug = urlPath.replace(/^\/+|\/+$/g, '') || 'home'
+    const filePath = await resolveContentPath(contentDir, slug)
+    if (filePath) files.add(filePath)
+  }
+
+  await add('/')
+  const nav = await buildNavigation(contentDir)
+  for (const item of nav.topNav) {
+    if (item.isExternal) continue
+    await add(item.path)
+    const first = firstPage(nav.sidebar.get(item.path) ?? [])
+    if (first) await add(first)
+  }
+  return [...files]
+}
+
+function firstPage(items: SidebarItem[]): string | null {
+  for (const item of items) {
+    if (item.type === 'file') return item.path
+    const nested = firstPage(item.children ?? [])
+    if (nested) return nested
+  }
+  return null
+}
+
 export default defineNitroPlugin(async () => {
   const startTime = performance.now()
   logger.info('f0 startup validation starting')
 
   // Access runtime config
   const config = useRuntimeConfig()
-  const contentDir = resolve(process.cwd(), config.contentDir || './content')
+  const settings = f0Config()
+  const contentDir = resolve(process.cwd(), settings.contentDir)
 
   // =========================================================================
   // CHECK 1: Content directory exists (FATAL)
@@ -75,7 +112,7 @@ export default defineNitroPlugin(async () => {
 
   if (!existsSync(contentDir)) {
     logger.error('Content directory not found', { path: contentDir })
-    logger.error('Create the directory or set CONTENT_DIR environment variable')
+    logger.error('Create the directory or set NUXT_CONTENT_DIR (or CONTENT_DIR)')
     process.exit(1)
   }
 
@@ -94,9 +131,28 @@ export default defineNitroPlugin(async () => {
   // CHECK 3: Auth configuration (FATAL if misconfigured)
   // =========================================================================
 
-  const authMode = config.authMode || 'public'
+  // Settings are read from the runtime environment; say which mode is in
+  // effect and why, so a site that was meant to be private is easy to spot.
+  const authMode = settings.authMode
+  logger.info('Auth mode', { authMode, source: settings.authModeSource })
+
+  for (const warning of settings.warnings) {
+    logger.warn(warning)
+  }
+  if (settings.problems.length > 0) {
+    for (const problem of settings.problems) {
+      logger.error(problem)
+    }
+    logger.error('Refusing to start until the settings above are fixed')
+    process.exit(1)
+  }
+
+  if (!config.public.siteUrl) {
+    logger.warn('NUXT_PUBLIC_SITE_URL is not set: canonical URLs, sitemap and feed links fall back to the request host. Set it to the public site URL.')
+  }
+
   if (authMode === 'private') {
-    const privateDir = resolve(process.cwd(), config.privateDir || './private')
+    const privateDir = resolve(process.cwd(), settings.privateDir)
     const allowlistPath = join(privateDir, 'allowlist.json')
 
     if (!existsSync(allowlistPath)) {
@@ -106,27 +162,68 @@ export default defineNitroPlugin(async () => {
     }
 
     logger.info('Private auth mode: allowlist found', { path: allowlistPath })
+
+    // Admin endpoints (upload, audit logs) need an explicit admins list.
+    try {
+      const allowlist = JSON.parse(readFileSync(allowlistPath, 'utf-8')) as { admins?: unknown }
+      if (!Array.isArray(allowlist.admins) || allowlist.admins.length === 0) {
+        logger.warn('No "admins" in allowlist.json: /api/admin/* (upload, audit logs) is disabled for everyone. Add an "admins" array to enable it.')
+      }
+    }
+    catch {
+      logger.warn('Could not parse allowlist.json to check admins', { path: allowlistPath })
+    }
   }
 
   // =========================================================================
-  // CHECK 4: Pre-warm content cache
+  // CHECK 4: Warm the pages visitors land on (gates /_ready)
   // =========================================================================
 
-  logger.info('Pre-warming content cache...')
-  const contentFiles = await scanContentFiles(contentDir)
-  const { cached, errors } = await prewarmCache(contentFiles)
-  logger.info('Content cache warmed', { pages: cached, errors })
-
-  // =========================================================================
-  // CHECK 5: Pre-compute /llms.txt
-  // =========================================================================
-
+  // /_ready answers 503 until the critical pages are rendered: home, each top
+  // navigation target and the first page of each section. Everything else
+  // warms in the background, so readiness does not grow with site size.
+  // Failures are not fatal (pages render on demand).
+  let criticalCount = 0
   try {
-    const siteName = config.public?.siteName || 'f0'
-    await getCachedLlmsTxt(contentDir, siteName)
-    logger.info('/llms.txt pre-computed')
-  } catch (error) {
-    logger.warn('Failed to pre-compute /llms.txt', {
+    const critical = await criticalPages(contentDir)
+    const warmed = await prewarmCache(critical)
+    criticalCount = warmed.cached
+    logger.info('Critical pages warmed', { pages: warmed.cached, errors: warmed.errors })
+  }
+  catch (error) {
+    logger.warn('Critical warm-up failed; pages will render on first request', {
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+  finally {
+    markWarm()
+  }
+
+  // =========================================================================
+  // CHECK 5: Warm the rest and pre-compute /llms.txt (background)
+  // =========================================================================
+
+  let cached = 0
+  let errors = 0
+  try {
+    const contentFiles = await scanContentFiles(contentDir)
+    const warmed = await prewarmCache(contentFiles)
+    cached = warmed.cached
+    errors = warmed.errors
+    logger.info('Content cache warmed', { pages: cached, errors })
+
+    try {
+      const siteName = config.public?.siteName || 'f0'
+      await getCachedLlmsTxt(contentDir, siteName)
+      logger.info('/llms.txt pre-computed')
+    } catch (error) {
+      logger.warn('Failed to pre-compute /llms.txt', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+  catch (error) {
+    logger.warn('Background warm-up failed; pages will render on first request', {
       error: error instanceof Error ? error.message : String(error),
     })
   }
@@ -138,6 +235,7 @@ export default defineNitroPlugin(async () => {
   const duration = Math.round(performance.now() - startTime)
   logger.info('f0 startup validation complete', {
     duration,
+    criticalPages: criticalCount,
     pages: cached,
     errors,
     authMode,

@@ -34,6 +34,7 @@ import { verifyOtp, checkVerifyRateLimit } from '../../utils/otp'
 import { createToken } from '../../utils/jwt'
 import { OTP_CONFIG } from '../../utils/storage'
 import { auditLog } from '../../utils/audit'
+import { f0Config } from '../../utils/f0-config'
 
 // =============================================================================
 // REQUEST VALIDATION
@@ -49,10 +50,10 @@ interface VerifyOtpBody {
 // =============================================================================
 
 export default defineEventHandler(async (event) => {
-  const config = useRuntimeConfig()
+  const settings = f0Config()
   
   // Check if auth is enabled
-  if (config.authMode === 'public') {
+  if (settings.authMode === 'public') {
     throw createError({
       statusCode: 400,
       statusMessage: 'Bad Request',
@@ -176,7 +177,9 @@ export default defineEventHandler(async (event) => {
   return {
     success: true,
     message: 'Authentication successful',
-    token, // Also return in body for API clients
+    // For API clients (scripts, agents) that send it as a Bearer token.
+    // Browsers keep using the httpOnly cookie and do not store this.
+    token,
     user: {
       email,
     },

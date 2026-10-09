@@ -17,10 +17,11 @@
  */
 
 import { readdir, stat } from 'fs/promises'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { createHash } from 'crypto'
 import { generateLlmText, getLlmStats, type LlmGeneratorOptions } from './llm-generator'
 import { logger } from './logger'
+import { onContentChange } from './invalidation'
 
 // =============================================================================
 // CACHE STATE
@@ -30,7 +31,10 @@ let cachedLlmsTxt: string | null = null
 let cachedLlmsHash: string | null = null
 let cachedLlmsGeneratedAt: number = 0
 
-// Section-scoped cache (for future Phase 4.2)
+// Section-scoped cache, keyed by the ?section= values. Bounded LRU: section
+// strings come from unauthenticated query parameters, so an unbounded Map would
+// let arbitrary values grow memory without limit.
+const SECTION_CACHE_MAX = 64
 const sectionCache = new Map<string, { text: string; hash: string }>()
 
 // =============================================================================
@@ -101,11 +105,16 @@ async function computeContentHash(dir: string): Promise<string> {
  * @returns The full /llms.txt string
  */
 export async function getCachedLlmsTxt(
-  contentDir: string,
+  configuredContentDir: string,
   siteName: string = 'f0',
   options: LlmGeneratorOptions = {}
 ): Promise<string> {
   const startTime = performance.now()
+  // The content hash is built from file paths, so './content' and
+  // '/app/content' must hash alike: otherwise the startup precompute (which
+  // passes an absolute path) never matches a request (which passes the
+  // configured one) and the first request regenerates everything.
+  const contentDir = resolve(configuredContentDir)
 
   // If section-scoped, use section cache
   if (options.sections && options.sections.length > 0) {
@@ -114,11 +123,20 @@ export async function getCachedLlmsTxt(
     const cached = sectionCache.get(sectionKey)
 
     if (cached && cached.hash === currentHash) {
+      // Refresh recency: re-insert at the end of the Map's insertion order
+      sectionCache.delete(sectionKey)
+      sectionCache.set(sectionKey, cached)
       return cached.text
     }
 
     const text = await generateLlmText(contentDir, siteName, options)
+    sectionCache.delete(sectionKey)
     sectionCache.set(sectionKey, { text, hash: currentHash })
+    while (sectionCache.size > SECTION_CACHE_MAX) {
+      const oldest = sectionCache.keys().next().value
+      if (oldest === undefined) break
+      sectionCache.delete(oldest)
+    }
     return text
   }
 
@@ -175,3 +193,5 @@ export function getLlmsCacheStatus(): {
     hash: cachedLlmsHash,
   }
 }
+
+onContentChange('llms', invalidateLlmsCache)

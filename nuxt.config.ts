@@ -1,22 +1,28 @@
 /**
  * =============================================================================
- * LITEDOCS - NUXT CONFIGURATION
+ * F0 - NUXT CONFIGURATION
  * =============================================================================
- * 
- * This configuration file sets up Nuxt 3 for the f0 documentation platform.
- * 
+ *
+ * This configuration file sets up Nuxt 4 for the f0 documentation platform.
+ * The pre-Nuxt-4 directory layout (pages/, components/ ... at the root) is
+ * kept on purpose: Nuxt 4 detects it, and forks merge without file moves.
+ *
  * Key decisions:
  * - SSR enabled for SEO and fast initial page loads
- * - Runtime config separates public (browser) vs private (server-only) env vars
+ * - No environment variable is read here. Whatever this file reads at build
+ *   time is frozen into the server bundle (and the image), so secrets would
+ *   leak and runtime-only settings would be ignored. Server settings (auth
+ *   mode, secrets, SES, directories) are read at startup by
+ *   server/utils/f0-config.ts; public site metadata comes from NUXT_PUBLIC_*
+ *   at runtime.
  * - Nitro configured to protect /private directory from public access
  * - CSS uses a custom theme with light/dark mode support
- * 
- * Environment Variables Required:
- * - AUTH_MODE: 'public' | 'private' (controls whether auth is required)
- * - JWT_SECRET: Secret key for signing JWTs (required in private mode)
- * - AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY: For SES email
- * - EMAIL_FROM: Sender email address
- * - NUXT_PUBLIC_GTAG_ID: Optional Google Analytics ID
+ *
+ * Environment variables (all read at runtime, see README):
+ * - NUXT_AUTH_MODE / AUTH_MODE: 'public' | 'private'
+ * - NUXT_JWT_SECRET / JWT_SECRET: required in private mode
+ * - NUXT_AWS_REGION, NUXT_AWS_ACCESS_KEY_ID, NUXT_AWS_SECRET_ACCESS_KEY, NUXT_EMAIL_FROM
+ * - NUXT_PUBLIC_SITE_NAME, NUXT_PUBLIC_SITE_DESCRIPTION, NUXT_PUBLIC_SITE_URL, NUXT_PUBLIC_GTAG_ID
  */
 
 export default defineNuxtConfig({
@@ -24,8 +30,12 @@ export default defineNuxtConfig({
   // CORE SETTINGS
   // ---------------------------------------------------------------------------
   
-  // Enable Vue devtools in development
-  devtools: { enabled: true },
+  // Vue devtools: development only. Enabling it unconditionally loads the
+  // @nuxt/devtools module into production builds as well.
+  devtools: { enabled: false },
+  $development: {
+    devtools: { enabled: true },
+  },
 
   // Enable server-side rendering for SEO and AI crawlers
   ssr: true,
@@ -33,39 +43,25 @@ export default defineNuxtConfig({
   // ---------------------------------------------------------------------------
   // RUNTIME CONFIGURATION
   // ---------------------------------------------------------------------------
-  // These values are available at runtime and can be overridden by env vars
-  // Public values are exposed to the browser; private values are server-only
-  
+  // Literal defaults only (see the header). Nuxt overrides each public value
+  // from NUXT_PUBLIC_* when the server starts.
+
   runtimeConfig: {
-    // Private keys (server-only) - never exposed to client
-    jwtSecret: process.env.JWT_SECRET || 'change-me-in-production',
-    
-    // AWS SES Configuration
-    awsRegion: process.env.AWS_REGION || 'us-east-1',
-    awsAccessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
-    awsSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
-    emailFrom: process.env.EMAIL_FROM || 'no-reply@example.com',
-    
-    // Auth mode: 'public' (no auth) or 'private' (require login)
-    authMode: process.env.AUTH_MODE || 'public',
-    
-    // Content directory paths (relative to project root)
-    contentDir: process.env.CONTENT_DIR || './content',
-    privateDir: process.env.PRIVATE_DIR || './private',
-
-    // f0 mode: 'docs' (default) or 'blog' (convenience for pure-blog sites)
-    f0Mode: process.env.F0_MODE || 'docs',
-
-    // Public keys (exposed to client)
     public: {
       // Google Analytics - only injected if set
-      gtagId: process.env.NUXT_PUBLIC_GTAG_ID || '',
-      
+      gtagId: '',
+
       // Site metadata
-      siteName: process.env.NUXT_PUBLIC_SITE_NAME || 'f0',
-      siteDescription: process.env.NUXT_PUBLIC_SITE_DESCRIPTION || 'Documentation',
-      siteUrl: process.env.NUXT_PUBLIC_SITE_URL || '',
-    }
+      siteName: 'f0',
+      siteDescription: 'Documentation',
+      siteUrl: '',
+
+      // Real-user metrics (Core Web Vitals) to the server log; off unless
+      // NUXT_PUBLIC_RUM=true. NUXT_PUBLIC_RUM_SAMPLE is the share of page
+      // loads that report (0 to 1).
+      rum: false,
+      rumSample: 1,
+    },
   },
 
   // ---------------------------------------------------------------------------
@@ -74,6 +70,15 @@ export default defineNuxtConfig({
   // CSS stylesheets
   
   css: [
+    // Self-hosted fonts (served from /_nuxt/, no third-party requests). Same
+    // family names as before ('Inter', 'JetBrains Mono'); browsers fetch only
+    // the scripts a page uses.
+    '@fontsource/inter/400.css',
+    '@fontsource/inter/500.css',
+    '@fontsource/inter/600.css',
+    '@fontsource/inter/700.css',
+    '@fontsource/jetbrains-mono/400.css',
+    '@fontsource/jetbrains-mono/500.css',
     '~/assets/css/main.css',             // Core theme (light + dark mode)
     '~/assets/css/blog.css',             // Blog-specific styles
   ],
@@ -91,15 +96,6 @@ export default defineNuxtConfig({
       meta: [
         { charset: 'utf-8' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-      ],
-      link: [
-        // Inter font from Google Fonts for Notion-like typography
-        { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
-        { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
-        { 
-          rel: 'stylesheet', 
-          href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap' 
-        },
       ],
       // Inline script to prevent theme flash - runs before page renders
       script: [
@@ -129,6 +125,10 @@ export default defineNuxtConfig({
   // ---------------------------------------------------------------------------
   
   nitro: {
+    typescript: {
+      tsConfig: { compilerOptions: { noUncheckedIndexedAccess: false } },
+    },
+
     // Security: Prevent serving files from /private directory
     // This is CRITICAL - allowlist.json must never be publicly accessible
     publicAssets: [
@@ -152,6 +152,12 @@ export default defineNuxtConfig({
       
       // llms.txt - short cache to ensure freshness
       '/llms.txt': { 
+        headers: { 
+          'cache-control': 'public, max-age=3600',
+          'content-type': 'text/plain; charset=utf-8'
+        } 
+      },
+      '/llms-full.txt': { 
         headers: { 
           'cache-control': 'public, max-age=3600',
           'content-type': 'text/plain; charset=utf-8'
@@ -212,10 +218,15 @@ export default defineNuxtConfig({
   // TYPESCRIPT CONFIGURATION
   // ---------------------------------------------------------------------------
   
+  // `npm run typecheck` checks app, server, shared and config code (CI runs
+  // it). noUncheckedIndexedAccess is a Nuxt 4 default this codebase predates.
   typescript: {
     strict: true,
     // Disable type checking during dev - run 'npm run typecheck' separately
     typeCheck: false,
+    tsConfig: { compilerOptions: { noUncheckedIndexedAccess: false } },
+    sharedTsConfig: { compilerOptions: { noUncheckedIndexedAccess: false } },
+    nodeTsConfig: { compilerOptions: { noUncheckedIndexedAccess: false } },
   },
 
   // ---------------------------------------------------------------------------

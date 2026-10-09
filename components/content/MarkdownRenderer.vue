@@ -22,6 +22,17 @@ PROPS:
 
 <template>
   <div class="markdown-page">
+    <!-- Where this page sits: section and folders, from the sidebar -->
+    <nav v-if="chrome?.breadcrumbs?.length" class="f0-breadcrumbs" aria-label="Breadcrumb">
+      <ol>
+        <li v-for="(crumb, index) in chrome.breadcrumbs" :key="index">
+          <NuxtLink v-if="crumb.path" :to="crumb.path">{{ crumb.title }}</NuxtLink>
+          <span v-else>{{ crumb.title }}</span>
+        </li>
+        <li v-if="title" aria-current="page">{{ title }}</li>
+      </ol>
+    </nav>
+
     <!-- Page header with title and copy button -->
     <div class="page-header" v-if="title || !htmlHasH1">
       <h1 v-if="title && !htmlHasH1" class="page-title">{{ title }}</h1>
@@ -41,6 +52,30 @@ PROPS:
       class="markdown-content"
       v-html="html"
     />
+
+    <!-- _partials/doc-footer.md or post-footer.md (nearest folder) -->
+    <div v-if="footerHtml" class="f0-partial f0-page-partial" v-html="footerHtml" />
+
+    <!-- Edit link and previous/next pages, in sidebar order -->
+    <footer v-if="chrome && (chrome.prev || chrome.next || chrome.editUrl)" class="f0-page-footer">
+      <a
+        v-if="chrome.editUrl"
+        :href="chrome.editUrl"
+        class="f0-edit-link"
+        target="_blank"
+        rel="noopener noreferrer"
+      >Edit this page</a>
+      <nav v-if="chrome.prev || chrome.next" class="f0-pager" aria-label="Previous and next pages">
+        <NuxtLink v-if="chrome.prev?.path" :to="chrome.prev.path" class="f0-pager-link f0-pager-prev" rel="prev">
+          <span class="f0-pager-label">Previous</span>
+          <span class="f0-pager-title">{{ chrome.prev.title }}</span>
+        </NuxtLink>
+        <NuxtLink v-if="chrome.next?.path" :to="chrome.next.path" class="f0-pager-link f0-pager-next" rel="next">
+          <span class="f0-pager-label">Next</span>
+          <span class="f0-pager-title">{{ chrome.next.title }}</span>
+        </NuxtLink>
+      </nav>
+    </footer>
   </div>
 </template>
 
@@ -54,6 +89,14 @@ const props = defineProps<{
   title?: string
   markdown?: string
   path?: string
+  /** Rendered _partials/doc-footer.md or post-footer.md */
+  footerHtml?: string
+  chrome?: {
+    breadcrumbs: { title: string, path: string | null }[]
+    prev: { title: string, path: string | null } | null
+    next: { title: string, path: string | null } | null
+    editUrl: string | null
+  }
 }>()
 
 // Check if HTML already has an H1
@@ -123,16 +166,23 @@ function setupLazyImages() {
   })
 }
 
+// Mermaid is browser-only. The import.meta.client ternary is constant-folded at
+// build time, so the server bundle never references 'mermaid' and Nitro does not
+// trace mermaid and its dependency graph into .output/server.
+const loadMermaid = () => import.meta.client
+  ? import('mermaid')
+  : Promise.reject(new Error('mermaid is client-only'))
+
 // Initialize mermaid diagrams
 async function setupMermaid() {
   if (!contentRef.value) return
-  
+
   const mermaidBlocks = contentRef.value.querySelectorAll('.mermaid[data-mermaid="true"]')
   if (mermaidBlocks.length === 0) return
-  
+
   // Dynamically import mermaid only when needed
   try {
-    const mermaid = await import('mermaid')
+    const mermaid = await loadMermaid()
     
     // Initialize mermaid with beautiful-mermaid inspired config
     mermaid.default.initialize({
@@ -216,11 +266,18 @@ async function setupMermaid() {
       } catch (err) {
         console.error('Mermaid render error:', err)
         // Show error state
-        block.innerHTML = `<div class="mermaid-error">
-          <strong>Diagram Error</strong>
-          <pre>${code}</pre>
-          <small>${err instanceof Error ? err.message : 'Failed to render diagram'}</small>
-        </div>`
+        // Build the error box with text nodes: the diagram source is author
+        // content and must never be parsed as HTML.
+        const box = document.createElement('div')
+        box.className = 'mermaid-error'
+        const heading = document.createElement('strong')
+        heading.textContent = 'Diagram Error'
+        const source = document.createElement('pre')
+        source.textContent = code
+        const message = document.createElement('small')
+        message.textContent = err instanceof Error ? err.message : 'Failed to render diagram'
+        box.append(heading, source, message)
+        block.replaceChildren(box)
         block.classList.add('mermaid-error-container')
       }
     }
@@ -229,11 +286,107 @@ async function setupMermaid() {
   }
 }
 
+// Turn :::tabs blocks into a tab bar. Without JavaScript they render as
+// labelled panels. The chosen label is remembered and applied to every group
+// that has it (pick "pnpm" once, see pnpm everywhere).
+const TAB_STORAGE_KEY = 'f0-tab'
+const tabSelectors = new WeakMap<HTMLElement, (label: string) => void>()
+
+function rememberedTab(): string {
+  try {
+    return localStorage.getItem(TAB_STORAGE_KEY) || ''
+  }
+  catch {
+    return ''
+  }
+}
+
+function setupTabs() {
+  if (!contentRef.value) return
+  const groups = Array.from(contentRef.value.querySelectorAll<HTMLElement>('.f0-tabs:not([data-enhanced])'))
+
+  groups.forEach((group, groupIndex) => {
+    const panels = Array.from(group.children).filter((el): el is HTMLElement => el instanceof HTMLElement && el.classList.contains('f0-tab'))
+    if (panels.length === 0) return
+
+    const list = document.createElement('div')
+    list.className = 'f0-tab-list'
+    list.setAttribute('role', 'tablist')
+    const prefix = `f0-tabs-${groupIndex}-${Math.random().toString(36).slice(2, 8)}`
+
+    const buttons = panels.map((panel, index) => {
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = 'f0-tab-button'
+      button.id = `${prefix}-tab-${index}`
+      button.setAttribute('role', 'tab')
+      button.setAttribute('aria-controls', `${prefix}-panel-${index}`)
+      button.textContent = panel.dataset.tabLabel || `Tab ${index + 1}`
+      panel.id = `${prefix}-panel-${index}`
+      panel.setAttribute('role', 'tabpanel')
+      panel.setAttribute('aria-labelledby', button.id)
+      panel.tabIndex = 0
+      list.appendChild(button)
+      return button
+    })
+
+    const select = (index: number) => {
+      buttons.forEach((button, i) => {
+        const active = i === index
+        button.setAttribute('aria-selected', String(active))
+        button.tabIndex = active ? 0 : -1
+        panels[i].hidden = !active
+      })
+    }
+
+    const choose = (index: number) => {
+      select(index)
+      const label = panels[index].dataset.tabLabel || ''
+      try {
+        localStorage.setItem(TAB_STORAGE_KEY, label)
+      }
+      catch {
+        // storage unavailable
+      }
+      contentRef.value?.querySelectorAll<HTMLElement>('.f0-tabs[data-enhanced]').forEach((other) => {
+        if (other !== group) tabSelectors.get(other)?.(label)
+      })
+    }
+
+    buttons.forEach((button, index) => {
+      button.addEventListener('click', () => choose(index))
+      button.addEventListener('keydown', (event) => {
+        const last = buttons.length - 1
+        const target = event.key === 'ArrowRight' ? (index === last ? 0 : index + 1)
+          : event.key === 'ArrowLeft' ? (index === 0 ? last : index - 1)
+            : event.key === 'Home' ? 0
+              : event.key === 'End' ? last
+                : -1
+        if (target < 0) return
+        event.preventDefault()
+        choose(target)
+        buttons[target].focus()
+      })
+    })
+
+    tabSelectors.set(group, (label) => {
+      const index = panels.findIndex(panel => panel.dataset.tabLabel === label)
+      if (index >= 0) select(index)
+    })
+
+    group.prepend(list)
+    group.dataset.enhanced = 'true'
+    const preferred = panels.findIndex(panel => panel.dataset.tabLabel === rememberedTab())
+    select(preferred >= 0 ? preferred : 0)
+  })
+}
+
 // Run setup after mount and when HTML changes
 onMounted(() => {
   setupCopyButtons()
   setupExternalLinks()
   setupLazyImages()
+  setupTabs()
   setupMermaid()
 })
 
@@ -243,12 +396,126 @@ watch(() => props.html, () => {
     setupCopyButtons()
     setupExternalLinks()
     setupLazyImages()
+    setupTabs()
     setupMermaid()
   })
 })
 </script>
 
 <style scoped>
+.f0-breadcrumbs {
+  margin-bottom: var(--spacing-4, 1rem);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.f0-breadcrumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-1, 0.25rem);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.f0-breadcrumbs li + li::before {
+  content: '/';
+  margin-right: var(--spacing-1, 0.25rem);
+  color: var(--color-text-tertiary);
+}
+
+.f0-breadcrumbs a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.f0-breadcrumbs a:hover {
+  color: var(--color-accent);
+}
+
+.f0-breadcrumbs [aria-current='page'] {
+  color: var(--color-text-primary);
+}
+
+.f0-page-partial {
+  margin-top: var(--spacing-10, 2.5rem);
+  padding: var(--spacing-5, 1.25rem);
+  border: 1px solid var(--color-border-primary);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+}
+
+.f0-page-partial :deep(> :first-child) {
+  margin-top: 0;
+}
+
+.f0-page-partial :deep(> :last-child) {
+  margin-bottom: 0;
+}
+
+.f0-page-footer {
+  margin-top: var(--spacing-12, 3rem);
+  padding-top: var(--spacing-6, 1.5rem);
+  border-top: 1px solid var(--color-border-primary);
+}
+
+.f0-edit-link {
+  display: inline-block;
+  margin-bottom: var(--spacing-6, 1.5rem);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.f0-edit-link:hover {
+  color: var(--color-accent);
+}
+
+.f0-pager {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-4, 1rem);
+}
+
+.f0-pager-link {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1, 0.25rem);
+  padding: var(--spacing-3, 0.75rem) var(--spacing-4, 1rem);
+  border: 1px solid var(--color-border-primary);
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  transition: border-color var(--transition-fast, 0.15s);
+}
+
+.f0-pager-link:hover {
+  border-color: var(--color-accent);
+}
+
+.f0-pager-next {
+  grid-column: 2;
+  text-align: right;
+}
+
+.f0-pager-label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.f0-pager-title {
+  font-weight: 500;
+  color: var(--color-accent);
+}
+
+@media (max-width: 640px) {
+  .f0-pager {
+    grid-template-columns: 1fr;
+  }
+
+  .f0-pager-next {
+    grid-column: 1;
+  }
+}
+
 .markdown-page {
   position: relative;
 }

@@ -22,6 +22,7 @@ interface NavigationState {
   topNav: TopNavItem[]
   sidebar: Record<string, SidebarItem[]>
   loading: boolean
+  loaded: boolean
   error: string | null
 }
 
@@ -36,8 +37,13 @@ export function useNavigation() {
     topNav: [],
     sidebar: {},
     loading: true,
+    loaded: false,
     error: null,
   }))
+  
+  // On the server this forwards the visitor's cookies, so navigation renders
+  // into the HTML in private mode too; in the browser it is plain $fetch
+  const requestFetch = useRequestFetch()
   
   /**
    * Current top-level section based on route
@@ -106,19 +112,30 @@ export function useNavigation() {
     state.value.error = null
     
     try {
-      const data = await $fetch<{
+      const data = await requestFetch<{
         topNav: TopNavItem[]
         sidebar: Record<string, SidebarItem[]>
       }>('/api/navigation')
       
       state.value.topNav = data.topNav
       state.value.sidebar = data.sidebar
+      state.value.loaded = true
     } catch (error: any) {
       console.error('Failed to fetch navigation:', error)
       state.value.error = error.message || 'Failed to load navigation'
     } finally {
       state.value.loading = false
     }
+  }
+  
+  /**
+   * Load navigation once per page load. Awaited by the layout during server
+   * rendering, so the header and sidebar links are in the HTML (for crawlers
+   * and readers without JavaScript); the browser reuses that state.
+   */
+  async function ensureNavigation() {
+    if (state.value.loaded) return
+    await fetchNavigation()
   }
   
   /**
@@ -200,6 +217,7 @@ export function useNavigation() {
     isActive,
     isExpanded,
     fetchNavigation,
+    ensureNavigation,
     refreshNavigation,
     findItemByPath,
   }

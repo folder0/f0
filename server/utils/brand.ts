@@ -21,8 +21,10 @@
 
 import { readFileSync, existsSync, statSync } from 'fs'
 import { join } from 'path'
-import yaml from 'yaml'
 import { logger } from './logger'
+import { readFrontmatter, resolveAssetUrl as resolveContentAssetUrl } from './content-core'
+import { onContentChange } from './invalidation'
+import { accentStyle, deriveAccentPalette } from './accent'
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -42,6 +44,8 @@ export interface BrandConfig {
   favicon: string
   /** Accent color hex (e.g. "#2563eb") */
   accentColor: string
+  /** CSS applying the derived accent palette for light and dark mode ('' without accent_color) */
+  accentCss: string
   /** Header display style */
   headerStyle: 'logo_only' | 'logo_and_text' | 'text_only'
   /** Footer copyright/text */
@@ -63,11 +67,34 @@ const DEFAULT_BRAND: BrandConfig = {
   logoDark: '',
   favicon: '',
   accentColor: '',
+  accentCss: '',
   headerStyle: 'text_only',
   footerText: '',
   footerLinks: [],
   customCss: '',
   ogImage: '',
+}
+
+// =============================================================================
+// CSS COLOUR VALIDATION
+// =============================================================================
+
+const HEX_COLOR = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i
+const FUNCTIONAL_COLOR = /^(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(\s*[-+0-9a-z.,%\s/]*\)$/i
+const NAMED_COLOR = /^[a-z]{3,30}$/i
+
+/**
+ * Return the value if it is a syntactically valid CSS colour (hex, a colour
+ * function, or a named colour), otherwise null. The allowed character sets
+ * exclude ; { } < > quotes and backslashes, so the result cannot break out of
+ * a CSS declaration or a <style> element.
+ */
+export function sanitizeCssColor(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const color = value.trim()
+  if (color.length === 0 || color.length > 64) return null
+  if (HEX_COLOR.test(color) || FUNCTIONAL_COLOR.test(color) || NAMED_COLOR.test(color)) return color
+  return null
 }
 
 // =============================================================================
@@ -81,10 +108,8 @@ let brandMtime: number = 0
  * Resolve a content-relative path (./assets/images/logo.svg) to an API URL.
  */
 function resolveAssetUrl(relativePath: string): string {
-  if (!relativePath) return ''
-  // Strip leading ./ 
-  const cleaned = relativePath.replace(/^\.\//, '')
-  return `/api/content/${cleaned}`
+  // Same rule as images in Markdown; absolute URLs (a CDN logo) pass through
+  return relativePath ? resolveContentAssetUrl(relativePath) : ''
 }
 
 // =============================================================================
@@ -115,15 +140,14 @@ export function getBrandConfig(contentDir: string): BrandConfig {
     }
 
     // Parse _brand.md
-    const content = readFileSync(brandPath, 'utf-8')
-    const match = content.match(/^---\n([\s\S]*?)\n---/)
-    if (!match) {
+    const doc = readFrontmatter(readFileSync(brandPath, 'utf-8'))
+    if (!doc.hasFrontmatter) {
       brandCache = { ...DEFAULT_BRAND }
       brandMtime = stats.mtimeMs
       return brandCache
     }
 
-    const fm = yaml.parse(match[1]) || {}
+    const fm = doc.data as Record<string, any>
 
     // Parse footer links
     let footerLinks: FooterLink[] = []
@@ -136,11 +160,43 @@ export function getBrandConfig(contentDir: string): BrandConfig {
         }))
     }
 
+    // accent_color is interpolated into a <style> block, so only accept values
+    // that parse as a CSS colour. Anything else is dropped with a warning.
+    let accentColor = ''
+    if (fm.accent_color === null) {
+      logger.warn('_brand.md accent_color is empty. Quote hex values: accent_color: "#2563eb"', { path: brandPath })
+    }
+    else if (fm.accent_color !== undefined) {
+      const parsed = sanitizeCssColor(fm.accent_color)
+      if (parsed) {
+        accentColor = parsed
+      }
+      else {
+        logger.warn('_brand.md accent_color is not a valid CSS colour and was ignored', { path: brandPath, value: String(fm.accent_color).slice(0, 64) })
+      }
+    }
+
+    // The full palette (accent, tint, hover) for both themes, with contrast
+    // against each background unless accent_exact: true
+    let accentCss = ''
+    if (accentColor) {
+      const palette = deriveAccentPalette(accentColor, fm.accent_exact === true)
+      accentCss = accentStyle(palette)
+      if (palette.adjusted) {
+        logger.info('_brand.md accent_color adjusted for readable contrast (set accent_exact: true to keep it as written)', {
+          accent: accentColor,
+          light: palette.light.accent,
+          dark: palette.dark.accent,
+        })
+      }
+    }
+
     brandCache = {
       logo: resolveAssetUrl(fm.logo as string || ''),
       logoDark: resolveAssetUrl(fm.logo_dark as string || fm.logo as string || ''),
       favicon: resolveAssetUrl(fm.favicon as string || ''),
-      accentColor: (fm.accent_color as string) || '',
+      accentColor,
+      accentCss,
       headerStyle: (['logo_only', 'logo_and_text', 'text_only'].includes(fm.header_style as string)
         ? fm.header_style as BrandConfig['headerStyle']
         : 'text_only'),
@@ -171,3 +227,5 @@ export function invalidateBrandCache(): void {
   brandCache = null
   brandMtime = 0
 }
+
+onContentChange('brand', invalidateBrandCache)

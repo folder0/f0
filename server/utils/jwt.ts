@@ -24,8 +24,10 @@
  * - For revocation needs, consider adding token ID to blacklist (future)
  */
 
+import { randomUUID } from 'crypto'
 import jwt from 'jsonwebtoken'
 import { logger } from './logger'
+import { f0Config } from './f0-config'
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -36,6 +38,7 @@ import { logger } from './logger'
  */
 export interface JwtPayload {
   email: string
+  jti?: string  // Unique session id, used to revoke the session on logout
   iat?: number  // Issued at (added by jwt.sign)
   exp?: number  // Expiry (added by jwt.sign)
 }
@@ -63,18 +66,12 @@ const TOKEN_EXPIRY = '72h'
  * Throws if not configured (catches misconfiguration early)
  */
 function getJwtSecret(): string {
-  const config = useRuntimeConfig()
-  const secret = config.jwtSecret
-  
-  if (!secret || secret === 'change-me-in-production') {
-    // In production, this should fail
-    // In development, we allow the default but warn
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('JWT_SECRET not configured for production')
-    }
-    logger.warn('Using default JWT secret - NOT SAFE FOR PRODUCTION')
+  // Empty only in production without a configured secret; f0Config() reports
+  // that as a problem and private sites refuse to start.
+  const secret = f0Config().jwtSecret
+  if (!secret) {
+    throw new Error('JWT secret not configured: set NUXT_JWT_SECRET')
   }
-  
   return secret
 }
 
@@ -91,6 +88,7 @@ function getJwtSecret(): string {
 export function createToken(email: string): string {
   const payload: JwtPayload = {
     email: email.toLowerCase().trim(),
+    jti: randomUUID(),
   }
   
   const secret = getJwtSecret()

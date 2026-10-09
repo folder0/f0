@@ -149,6 +149,27 @@ Methods get colored badges: GET (green), POST (blue), PUT (orange), PATCH (purpl
 
 Supported: YouTube, Loom, Figma, GitHub Gists. Unknown URLs render as styled link cards.
 
+### Tabs, Steps and Cards
+
+````markdown
+:::tabs
+@tab npm
+```bash
+npm install f0
+```
+@tab pnpm
+```bash
+pnpm add f0
+```
+:::
+````
+
+`:::steps` numbers each `###` heading inside it; `:::cards` lays out a list of links as a grid. See [docs/CONTENT-GUIDE.md](docs/CONTENT-GUIDE.md).
+
+### Partials
+
+Markdown in `_partials/` renders around pages without touching code: `announcement.md` (banner on every page), `footer.md`, `doc-footer.md` (after docs pages) and `post-footer.md` (after blog posts; the nearest folder's file wins).
+
 ### Mermaid Diagrams
 
 ```markdown
@@ -199,7 +220,7 @@ Images are automatically optimized on demand via query parameters:
 /api/content/assets/images/photo.png?w=400&q=80   → 400px, quality 80
 ```
 
-The Markdown pipeline automatically wraps content images in responsive `<picture>` elements with WebP srcset at 400/800/1200w and lazy loading. Processed variants are cached to disk. If sharp is unavailable, originals are served.
+The Markdown pipeline automatically wraps content images in responsive `<picture>` elements with WebP srcset at 400/800/1200w and lazy loading. Processed variants are cached on disk in `NUXT_IMAGE_CACHE_DIR` (default: the system temp directory, never inside `content/`). If sharp is unavailable, originals are served.
 
 Image paths in Markdown (`./assets/images/x.png`) preview correctly in GitHub and VS Code.
 
@@ -219,6 +240,10 @@ GET /llms.txt?section=api            → Only /api content
 
 Output is plain text with hierarchical path headers, stripped of all UI chrome. Pre-computed at startup and cached with content-hash invalidation.
 
+### `/llms-full.txt` — Full Context (llmstxt.org location)
+
+The same full text as `/llms.txt`, at the location the [llms.txt convention](https://llmstxt.org) uses. **Notice:** a later release turns `/llms.txt` into the convention's short index of links; agents that want the full text should switch to `/llms-full.txt` now. `/llms.txt` responses carry a `Link` and an `X-F0-Notice` header saying so.
+
 ### `/llms-index.txt` — Discovery
 
 ```
@@ -234,6 +259,10 @@ Output is plain text with hierarchical path headers, stripped of all UI chrome. 
 ```
 
 Agents read the index first, then fetch only the sections they need.
+
+### `/mcp` — Model Context Protocol
+
+AI tools that speak MCP (Claude, Cursor, VS Code and others) can use the site directly. Add it as a remote HTTP MCP server at `https://your-site/mcp`. It offers three read-only tools: `search_docs`, `read_page` (Markdown by path) and `list_pages` (sections and pages). On private sites, create a personal access token for the tool (`npm run token -- create --email you@company.com --name claude-desktop`) and send it as `Authorization: Bearer <token>`. Tokens act as their email, stop working when that email leaves the allowlist, and are revoked with `npm run token -- revoke --name claude-desktop`; only their hashes are stored, in `private/tokens.json`.
 
 ### `/api/agents/search` — Semantic Search
 
@@ -261,7 +290,7 @@ Auto-generated for every deployment:
 Secure internal documentation with email OTP — no Identity Provider required.
 
 ```bash
-AUTH_MODE=private
+NUXT_AUTH_MODE=private
 ```
 
 Add authorized emails to `/private/allowlist.json`:
@@ -269,11 +298,14 @@ Add authorized emails to `/private/allowlist.json`:
 ```json
 {
   "emails": ["alice@company.com", "bob@company.com"],
-  "domains": ["company.com"]
+  "domains": ["company.com"],
+  "admins": ["alice@company.com"]
 }
 ```
 
-Configure AWS SES for email delivery. Flow: email challenge → 8-digit OTP → JWT token → access granted.
+`admins` lists who may use the admin API (content upload, audit logs). If it is missing or empty, nobody is an admin.
+
+Configure AWS SES for email delivery. Flow: email challenge → 8-digit OTP → JWT token → access granted. In the browser the session lives only in an httpOnly cookie that page scripts cannot read; `GET /api/auth/session` reports who is signed in. API clients can send the token returned by `/api/auth/verify-otp` as `Authorization: Bearer <token>`. Logging out revokes the session immediately, and removing someone from the allowlist ends their access on their next request.
 
 ---
 
@@ -283,7 +315,7 @@ Configure AWS SES for email delivery. Flow: email challenge → 8-digit OTP → 
 
 ```
 GET /_health    → Liveness (always 200 if process alive, includes cache stats)
-GET /_ready     → Readiness (validates content directory accessible)
+GET /_ready     → Readiness (content directory readable and startup warm-up finished)
 ```
 
 Both bypass auth in private mode.
@@ -303,7 +335,7 @@ On boot, f0 validates the deployment environment before accepting traffic:
 - **Content cache** — mtime-based invalidation, ~1ms cached responses
 - **Navigation cache** — mtime + directory structure hash
 - **`/llms.txt` cache** — content-hash invalidation, ~3ms cached
-- **Image cache** — disk-based, mtime invalidation against source
+- **Image cache** — disk-based, keyed by source path, mtime and size; in memory if the directory is not writable
 - **Structured JSON logs** — all server output, zero `console.log`
 
 ### Content Validation CLI
@@ -327,6 +359,7 @@ Checks: frontmatter YAML, image references, heading hierarchy, title resolution,
 | `/api/blog?path=` | GET | Blog post listings |
 | `/api/agents/search?q=` | GET | AI semantic search |
 | `/api/content/raw/[...slug]` | GET | Raw Markdown source |
+| `/<page>.md` | GET | The same Markdown source at the page's own URL plus `.md` (`/guides/intro.md`, `/home.md`); pages link to it with `rel="alternate" type="text/markdown"` |
 | `/api/content/assets/[...path]` | GET | Static assets (with image processing) |
 | `/llms.txt` | GET | AI-optimized content stream |
 | `/llms-index.txt` | GET | Section index with token estimates |
@@ -336,6 +369,9 @@ Checks: frontmatter YAML, image references, heading hierarchy, title resolution,
 | `/_ready` | GET | Readiness probe |
 | `/api/auth/request-otp` | POST | Request OTP (private mode) |
 | `/api/auth/verify-otp` | POST | Verify OTP (private mode) |
+| `/api/auth/session` | GET | Who is signed in (from the session cookie) |
+| `/mcp` | POST | Model Context Protocol server (search, read and list pages) |
+| `/api/auth/logout` | POST | End the session and clear the cookie |
 | `/api/webhook` | POST | GitHub webhook for content sync |
 
 ---
@@ -349,7 +385,7 @@ docker build -t f0 .
 
 docker run -p 3000:3000 \
   -v $(pwd)/content:/app/content \
-  -e AUTH_MODE=public \
+  -e NUXT_AUTH_MODE=public \
   -e NUXT_PUBLIC_SITE_NAME="Acme Docs" \
   -e NUXT_PUBLIC_SITE_URL="https://docs.acme.com" \
   f0
@@ -364,19 +400,31 @@ node .output/server/index.mjs
 
 ### Environment Variables
 
+All settings are read when the server starts, from the runtime environment. Nothing is read at build time, so values that exist only during the build (for example Coolify variables limited to build time) have no effect, and no secret ends up inside the image. Each server setting accepts the `NUXT_` name shown or the short name in brackets; if both are set, the `NUXT_` name wins. The startup log line `Auth mode` shows the mode in effect and which variable set it.
+
+A private site without a JWT secret refuses to start rather than run unprotected. Any `AUTH_MODE` value other than `public` (including typos) is treated as private.
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NUXT_PUBLIC_SITE_NAME` | `f0` | Site name (header, OG, RSS) |
 | `NUXT_PUBLIC_SITE_DESCRIPTION` | `Documentation` | Default meta description |
 | `NUXT_PUBLIC_SITE_URL` | — | Base URL for sitemap, canonical links, OG |
-| `CONTENT_DIR` | `./content` | Path to content directory |
-| `AUTH_MODE` | `public` | `public` or `private` |
-| `JWT_SECRET` | — | Secret for signing tokens (required in private mode) |
-| `AWS_REGION` | `us-east-1` | AWS region for SES |
-| `AWS_ACCESS_KEY_ID` | — | AWS credentials for email |
-| `AWS_SECRET_ACCESS_KEY` | — | AWS credentials for email |
-| `EMAIL_FROM` | — | Sender email address |
-| `GITHUB_WEBHOOK_SECRET` | — | Secret for webhook signature verification |
+| `NUXT_CONTENT_DIR` (`CONTENT_DIR`) | `./content` | Path to content directory |
+| `NUXT_PRIVATE_DIR` (`PRIVATE_DIR`) | `./private` | Path to the directory holding `allowlist.json` |
+| `NUXT_AUTH_MODE` (`AUTH_MODE`) | `public` | `public` or `private` |
+| `NUXT_F0_MODE` (`F0_MODE`) | `docs` | `blog` applies blog defaults to the site root |
+| `NUXT_JWT_SECRET` (`JWT_SECRET`) | — | Secret for signing sessions, 32+ random characters (required in private mode) |
+| `NUXT_AWS_REGION` (`AWS_REGION`) | `us-east-1` | AWS region for SES |
+| `NUXT_AWS_ACCESS_KEY_ID` (`AWS_ACCESS_KEY_ID`) | — | AWS credentials for email |
+| `NUXT_AWS_SECRET_ACCESS_KEY` (`AWS_SECRET_ACCESS_KEY`) | — | AWS credentials for email |
+| `NUXT_EMAIL_FROM` (`EMAIL_FROM`) | — | Sender email address |
+| `NUXT_GITHUB_WEBHOOK_SECRET` (`GITHUB_WEBHOOK_SECRET`) | — | Secret for webhook signature verification |
+| `NUXT_PUBLIC_EDIT_URL` (`F0_EDIT_URL`) | — | Adds "Edit this page" to docs pages. A URL with `{path}` for the file's path in the content folder, e.g. `https://github.com/acme/docs/edit/main/content/{path}` |
+| `NUXT_PUBLIC_RUM` | `false` | `true` logs each visitor's Core Web Vitals (LCP, INP, CLS, FCP, TTFB) as `{"msg":"rum",...}` lines. No cookies or third parties; the library loads after the page |
+| `NUXT_PUBLIC_RUM_SAMPLE` | `1` | Share of page loads that report (0 to 1) |
+| `NUXT_DRAFTS` (`F0_DRAFTS`) | `unlisted` | `unlisted`: drafts are reachable by URL (marked noindex) but listed nowhere. `404`: drafts are not served at all |
+| `NUXT_F0_FLAGS` (`F0_FLAGS`) | — | One-release opt-outs from behavior changes, e.g. `-hide-drafts,-nested-config`. Logged at startup |
+| `NUXT_IMAGE_CACHE_DIR` (`F0_IMAGE_CACHE_DIR`) | system temp dir | Where resized image variants are stored. Point it at a volume to keep variants across deploys |
 
 ---
 
@@ -386,7 +434,7 @@ f0 supports automatic dark/light mode with manual toggle.
 
 ### Via `_brand.md` (Recommended)
 
-Set `accent_color` in your `_brand.md` frontmatter. This overrides the CSS custom property site-wide. Add `custom_css` for full style control.
+Set `accent_color` in your `_brand.md` frontmatter. f0 derives the accent, tint and hover shades for light and dark mode, nudging the accent where needed so links stay readable (4.5:1 contrast) on each background; set `accent_exact: true` to use the color exactly as written. Add `custom_css` for full style control: it loads after the theme, so its rules win ties.
 
 ### Via CSS
 
@@ -450,9 +498,16 @@ f0 operates under 13 inviolable constraints that prevent feature creep and ensur
 - [x] Embed system (Loom, Figma, Gist, Mermaid)
 - [x] Asset validation
 - [x] Content validation CLI
-- [x] Blog engine with RSS feed
+- [x] Blog engine with RSS, Atom and JSON feeds (full content)
+- [x] Blog presets (`classic`, `cards`, `minimal`) and `--blog-*` design tokens
 - [x] Webhook for CI/CD content sync
-- [ ] Full-text search (Meilisearch integration)
+- [x] Site search with prefix matching and typo tolerance
+- [x] Docs breadcrumbs, previous/next links and "Edit this page"
+- [x] Tabs, steps and cards components; Markdown partials
+- [x] Markdown at every page URL (`/page.md`)
+- [x] Runtime-only settings, fail-closed private mode, engine image on GHCR
+- [x] Accessibility (axe) and JavaScript budget checks in CI
+- [x] Content census for each release (`npm run census -- ./content`)
 - [ ] Versioned documentation
 - [ ] Multi-language support
 
@@ -464,4 +519,4 @@ MIT
 
 ---
 
-Built with [Nuxt 3](https://nuxt.com).
+Built with [Nuxt 4](https://nuxt.com).

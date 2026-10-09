@@ -24,10 +24,12 @@
  */
 
 import { getBrandConfig } from '../utils/brand'
+import { f0Config } from '../utils/f0-config'
 
 export default defineEventHandler(async () => {
   const config = useRuntimeConfig()
-  const brand = getBrandConfig(config.contentDir)
+  const settings = f0Config()
+  const brand = getBrandConfig(settings.contentDir)
 
   return {
     ...brand,

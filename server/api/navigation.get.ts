@@ -33,9 +33,10 @@
 
 import { buildNavigation, getSidebarForSection } from '../utils/navigation'
 import { logger } from '../utils/logger'
+import { f0Config } from '../utils/f0-config'
 
 export default defineEventHandler(async (event) => {
-  const config = useRuntimeConfig()
+  const settings = f0Config()
   const query = getQuery(event)
   
   // Get optional section filter
@@ -43,14 +44,14 @@ export default defineEventHandler(async (event) => {
   
   try {
     // Build full navigation
-    const nav = await buildNavigation(config.contentDir)
+    const nav = await buildNavigation(settings.contentDir)
     
     // Convert sidebar Map to plain object for JSON serialization
     let sidebarData: Record<string, unknown>
     
     if (section) {
       // Return sidebar for specific section only
-      const sidebarItems = await getSidebarForSection(config.contentDir, section)
+      const sidebarItems = await getSidebarForSection(settings.contentDir, section)
       sidebarData = { [section]: sidebarItems }
     } else {
       // Return all sidebars

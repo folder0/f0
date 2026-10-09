@@ -340,6 +340,8 @@ That single `layout: blog` declaration is what switches this directory from docs
 
 ### 2.2 — Blog Configuration Options
 
+A page uses the nearest `_config.md` in its folder or any folder above it, so `guides/changelog/_config.md` can make just the changelog a blog. Edits take effect on the next request, no restart needed.
+
 The `_config.md` file supports these fields:
 
 ```yaml
@@ -352,6 +354,38 @@ default_author: Acme Team             # Fallback author when post has no author 
 date_format: long                     # "long" (February 11, 2026), "short" (Feb 11, 2026), "relative" (3 days ago)
 ---
 ```
+
+### 2.2.1 — Choosing a Look
+
+Set `preset` in the blog's `_config.md`:
+
+| Preset | Look |
+|--------|------|
+| `classic` (default) | A list: title, excerpt, date and tags, with a small cover thumbnail |
+| `cards` | A responsive grid of cards with the cover image on top |
+| `minimal` | An archive list: titles with dates only |
+
+```yaml
+---
+layout: blog
+title: Engineering Blog
+preset: cards
+---
+```
+
+For finer control, set the blog's design tokens from your `_brand.md` `custom_css` file. Tokens are the supported way to restyle the blog; class names may change between releases.
+
+```css
+:root {
+  --blog-max-width: 960px;        /* blog index column */
+  --blog-post-max-width: 720px;   /* single post column */
+  --blog-card-radius: 12px;
+  --blog-excerpt-lines: 3;
+  --blog-cover-ratio: 16 / 9;
+}
+```
+
+All tokens are listed at the top of `assets/css/blog.css`. Presets set some tokens themselves; to change those within a preset, target `.blog-layout` instead of `:root`.
 
 ### 2.3 — Adding to Navigation
 
@@ -519,11 +553,11 @@ Hide work-in-progress posts from the blog index:
 draft: true
 ```
 
-Draft posts don't appear in the blog listing, sidebar, RSS feed, or tag counts. They're still accessible by direct URL if you know the path — useful for sharing previews.
+Draft posts don't appear in the blog listing, sidebar, search, sitemap, `llms.txt`, RSS feed, or tag counts. They're still accessible by direct URL if you know the path — useful for sharing previews — with a Draft notice and a `noindex` tag so search engines skip them. `draft: yes` and `draft: on` work too. Set `F0_DRAFTS=404` to hide drafts completely.
 
 ### 2.11 — RSS Feed
 
-The blog automatically generates an RSS feed at `/feed.xml`. No configuration needed. The feed includes all published (non-draft) blog posts with titles, excerpts, dates, and links.
+The blog automatically publishes feeds, with no configuration: RSS at `/feed.xml`, Atom at `/feed.atom` and JSON Feed at `/feed.json`. Each carries the 20 newest published (non-draft) posts with their full content, and blog pages link to them so readers can subscribe. Add `?path=/your-blog` for a specific blog folder; without it, the feeds serve your blog folder.
 
 Readers can subscribe at `https://your-site.com/feed.xml`.
 
@@ -680,6 +714,19 @@ This treats the root `/content` directory as a blog. Drop Markdown files directl
 
 ---
 
+### 2.15 — Partials: Your Own Content Around Every Page
+
+Add Markdown files to a `_partials/` folder to place your own content around pages, without touching f0's code:
+
+| File | Where it appears |
+|------|------------------|
+| `_partials/announcement.md` | A banner above every page's content |
+| `_partials/footer.md` | The site footer, above `footer_text` and footer links |
+| `_partials/doc-footer.md` | After every docs page (a feedback prompt, support links) |
+| `_partials/post-footer.md` | After every blog post (a newsletter sign-up, an author bio) |
+
+`announcement` and `footer` live in the content root. `doc-footer` and `post-footer` use the nearest `_partials/` folder above the page, so `blog/_partials/post-footer.md` applies to that blog only. Partials support everything pages do (callouts, images, links) and are never listed or served as pages themselves.
+
 ## Part 3: Branding + Blog Together
 
 Here's how everything fits together for a fully branded site with both documentation and a blog.
@@ -774,6 +821,7 @@ This checks frontmatter YAML validity, broken image references, heading hierarch
 | `logo_dark` | string | Same as `logo` | `./assets/images/logo-dark.svg` |
 | `favicon` | string | — | `./assets/images/favicon.png` |
 | `accent_color` | string | `#2563eb` | `"#0F172A"` |
+| `accent_exact` | boolean | `false` | `true` keeps `accent_color` exactly as written instead of adjusting it for readable contrast in light and dark mode |
 | `header_style` | string | `text_only` | `logo_and_text` |
 | `footer_text` | string | — | `"© 2026 Acme Corp."` |
 | `footer_links` | array | `[]` | `[{label: "Privacy", url: "/privacy"}]` |
@@ -788,6 +836,7 @@ This checks frontmatter YAML validity, broken image references, heading hierarch
 | `title` | string | `Blog` | `Engineering Blog` |
 | `description` | string | — | `Behind the scenes` |
 | `posts_per_page` | number | `10` | `15` |
+| `preset` | string | `classic` | `cards` (or `minimal`) |
 | `default_author` | string | — | `Acme Team` |
 | `date_format` | string | `long` | `short`, `relative` |
 

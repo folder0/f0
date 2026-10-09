@@ -1,432 +1,291 @@
 # f0 Coolify Deployment Guide
 
-> **Definitive guide based on real deployment experience.** This guide addresses all the issues encountered during actual f0 deployments to Coolify, including memory constraints, health check configuration, and build optimization.
+How to run an f0 site on [Coolify](https://coolify.io) with the repository's Dockerfile. Each site is one Coolify application that builds from its own repository.
+
+> **Read Step 5 before your first deploy.** Use the `NUXT_` names shown there. On releases before October 2026, a plain `AUTH_MODE=private` set in Coolify is ignored when the container starts, which leaves a "private" site public.
 
 ## Prerequisites
 
-### Minimum Server Requirements
+### Server requirements
 
 | Resource | Minimum | Recommended |
 |----------|---------|-------------|
 | **RAM** | 1GB + 2GB swap | 2GB+ |
 | **CPU** | 1 vCPU | 2 vCPU |
 | **Storage** | 10GB | 20GB |
-| **Node.js** | 18+ | 20+ |
 
-> ⚠️ **Critical**: Nuxt builds require **1-2GB of memory**. Servers with less than 1GB available RAM will fail during the build phase.
+The image runs on Node.js 24 (pinned in the Dockerfile). You don't need Node.js on the server itself.
+
+Building the app needs 1–2GB of memory. Servers with less than 1GB available will fail during the build unless they have swap.
 
 ---
 
-## Step 1: Prepare Your Server
+## Step 1: Prepare the server
 
-### 1.1 Check Available Memory
+### 1.1 Check available memory
 
 ```bash
 ssh user@your-server
 free -h
 ```
 
-If available memory is less than 1GB, **you must add swap space**:
-
-### 1.2 Add Swap Space (Required for servers with < 2GB RAM)
+### 1.2 Add swap (servers with less than 2GB RAM)
 
 ```bash
-# Create 2GB swap file
+# Create a 2GB swap file
 sudo fallocate -l 2G /swapfile
 sudo chmod 600 /swapfile
 sudo mkswap /swapfile
 sudo swapon /swapfile
 
-# Make permanent (survives reboot)
+# Keep it after reboot
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
-# Verify
 free -h
 ```
 
-### 1.3 Clear Docker Resources
+### 1.3 Keep the Docker build cache
 
-Free up memory before deploying:
+Do **not** run `docker system prune -af` or `docker builder prune -af` before deploys. They delete the cached dependency install, so the next deploy rebuilds everything from scratch (several minutes instead of about one), and they delete the previous images Coolify needs to roll back.
 
-```bash
-# Remove unused containers, images, and build cache
-docker system prune -af
-docker builder prune -af
-```
+In Coolify, under **Servers → your server → Advanced**:
 
----
+- Turn **Force Docker Cleanup** off, or raise the cleanup threshold so it only runs when the disk is nearly full.
+- Keep at least 2 previous images per application so rollback works.
 
-## Step 2: Configure Coolify Server Settings
-
-### 2.1 Reduce Concurrent Builds
-
-In Coolify Dashboard:
-1. Go to **Servers** → Select your server
-2. Click **Advanced** tab
-3. Set **Concurrent Builds** to `1`
-4. Click **Save**
-
-> This prevents multiple builds from competing for limited memory.
-
-### 2.2 Verify Build Timeout
-
-Default is 3600 seconds (60 minutes), which is sufficient. If changed, ensure it's at least **1800 seconds** (30 minutes).
+If the disk really is full, remove only dangling images: `docker image prune -f`.
 
 ---
 
-## Step 3: Create the Application in Coolify
+## Step 2: Configure the Coolify server
 
-### 3.1 Add New Resource
+### 2.1 Concurrent builds
 
-1. Go to **Projects** → Select or create a project
-2. Click **+ New** → **Application**
-3. Select **GitHub** (or your Git provider)
-4. Select your repository
+On small servers, set **Servers → your server → Advanced → Concurrent Builds** to `1`, so two builds don't compete for memory.
 
-### 3.2 Configure Build Settings
+### 2.2 Build timeout
+
+The default (3600 seconds) is enough. Don't set it below 1800 seconds.
+
+---
+
+## Step 3: Create the application
+
+1. **Projects** → select or create a project → **+ New** → **Application**.
+2. Choose your Git provider and repository.
+3. Build settings:
 
 | Setting | Value |
 |---------|-------|
 | **Build Pack** | Dockerfile |
 | **Dockerfile Location** | `/Dockerfile` |
 | **Port Exposes** | `3000` |
-| **Port Mappings** | Leave empty (Coolify handles this) |
+| **Port Mappings** | Leave empty |
 
 ---
 
-## Step 4: Configure Health Check (Critical!)
+## Step 4: Health check
 
-> ⚠️ **This is the #1 cause of deployment failures.** Incorrect health check settings will kill your container immediately after it starts.
+The repository's Dockerfile defines a `HEALTHCHECK` that probes `/_ready` on `127.0.0.1:3000` every 10 seconds. For Dockerfile-based applications Coolify uses that healthcheck, so you don't need to configure one by hand.
 
-### 4.1 Navigate to Health Check Settings
+Leave **Enable Healthcheck** on. If you set values in the dashboard, mirror the Dockerfile:
 
-In your application → **Configuration** → **Health Check**
+| Setting | Value | Why |
+|---------|-------|-----|
+| **Scheme** | `http` | The container serves plain HTTP; TLS ends at Coolify's proxy |
+| **Host** | `127.0.0.1` | `localhost` can resolve to IPv6 inside Alpine and fail |
+| **Port** | `3000` | Not 80 |
+| **Path** | `/_ready` | `/` is a full page render, and a redirect in private mode |
+| **Interval** | `10` | Seconds between checks |
+| **Timeout** | `3` | |
+| **Retries** | `6` | |
+| **Start Period** | `10` (use `30` above ~500 pages) | |
 
-### 4.2 Set Correct Values
-
-| Setting | Value | Notes |
-|---------|-------|-------|
-| **Enable Healthcheck** | ✅ Enabled | Click the purple button |
-| **Method** | `GET` | |
-| **Scheme** | `http` | ⚠️ NOT https! |
-| **Host** | `localhost` | |
-| **Port** | `3000` | ⚠️ NOT 80! |
-| **Path** | `/` | |
-| **Interval** | `30` | Seconds between checks |
-| **Timeout** | `10` | Seconds to wait for response |
-| **Retries** | `3` | Attempts before marking unhealthy |
-| **Start Period** | `60` | ⚠️ Give app time to start |
-| **Response Code** | `200` | |
-
-### 4.3 Common Health Check Mistakes
-
-| Mistake | Symptom | Fix |
-|---------|---------|-----|
-| Port set to `80` | Container killed immediately | Change to `3000` |
-| Scheme set to `https` | Connection refused | Change to `http` |
-| Start Period too low | Container killed during startup | Set to `60` or higher |
-| Health check disabled but Dockerfile has HEALTHCHECK | Template error | Remove HEALTHCHECK from Dockerfile |
+`/_ready` answers 200 once the content directory is readable and the pages visitors land on first (home, top navigation targets, the first page of each section) are rendered, so traffic only moves to a new container that answers quickly. The rest of the site warms in the background, and readiness never waits more than 20 seconds. `/_health` only says the process is alive. Both work without a login in private mode.
 
 ---
 
-## Step 5: Configure Environment Variables
+## Step 5: Environment variables
 
-### 5.1 Add Required Variables
+Use the `NUXT_` names below. f0 reads its settings when the container starts, never during the build, so a change takes effect on the next restart without rebuilding. Current releases also accept short names such as `AUTH_MODE` or `JWT_SECRET`, but releases before October 2026 ignored them at runtime, so the `NUXT_` names are the safe choice. The startup log line `Auth mode` shows the mode in effect and which variable set it.
 
-In your application → **Environment Variables**:
+### 5.1 Public site
 
 ```env
-# Required
-AUTH_MODE=public
-
-# Site Metadata
+NUXT_AUTH_MODE=public
 NUXT_PUBLIC_SITE_NAME=Your Site Name
-NUXT_PUBLIC_SITE_DESCRIPTION=Your site description
-
-# For private mode (optional)
-# AUTH_MODE=private
-# JWT_SECRET=your-super-secret-key-minimum-32-characters
-
-# For email OTP (optional)
-# AWS_REGION=us-east-1
-# AWS_ACCESS_KEY_ID=your-key
-# AWS_SECRET_ACCESS_KEY=your-secret
-# EMAIL_FROM=no-reply@yourdomain.com
+NUXT_PUBLIC_SITE_DESCRIPTION=One sentence about the site
+NUXT_PUBLIC_SITE_URL=https://docs.example.com
 ```
 
-### 5.2 Important Notes
+`NUXT_PUBLIC_SITE_URL` is needed for canonical links, the sitemap and feed links. Without it they fall back to the request's host.
 
-- `JWT_SECRET` must be at least 32 characters for production
-- AWS credentials are only needed if using email OTP authentication
-- All environment variables are set at **build time** and **runtime**
+### 5.2 Private site (email login)
+
+```env
+NUXT_AUTH_MODE=private
+NUXT_JWT_SECRET=<output of: openssl rand -base64 32>
+NUXT_AWS_REGION=us-east-1
+NUXT_AWS_ACCESS_KEY_ID=<key>
+NUXT_AWS_SECRET_ACCESS_KEY=<secret>
+NUXT_EMAIL_FROM=no-reply@example.com
+```
+
+Set all of these together. Switching to private mode without a real `NUXT_JWT_SECRET` and email settings locks everyone out.
+
+In `private/allowlist.json`, list who may sign in, and list admins explicitly if anyone should use the admin API (content upload, audit logs). Without an `admins` list nobody is an admin:
+
+```json
+{
+  "emails": ["alice@example.com"],
+  "domains": ["example.com"],
+  "admins": ["alice@example.com"]
+}
+```
+
+### 5.3 Other variables
+
+| Variable | When |
+|----------|------|
+| `GITHUB_WEBHOOK_SECRET` | Only if you use the GitHub webhook. Without it the webhook refuses every request. |
+| `F0_MODE=blog` | Root of the site is a blog. |
+| `NUXT_CONTENT_DIR`, `NUXT_PRIVATE_DIR` | Only if content or private files live somewhere other than `/app/content` and `/app/private`. |
+
+### 5.4 Keep secrets out of the build
+
+In Coolify, untick **Available at Buildtime** for `NUXT_JWT_SECRET`, `NUXT_AWS_ACCESS_KEY_ID` and `NUXT_AWS_SECRET_ACCESS_KEY`, and leave **Available at Runtime** ticked. Current releases never read them during the build, but older releases wrote build-time values into the image, where anyone with access to the image can read them, and the build has no use for them either way.
+
+If a secret was ever available at build time, or was in a `.env` file during a build, rotate it.
 
 ---
 
-## Step 6: Content Strategy
+## Step 6: Content
 
-### Option A: Content in Git Repository (Recommended)
+Pick **one** of these per site. Don't combine them: a volume mounted on `/app/content` hides the content baked into the image, so git pushes would silently stop changing the site.
 
-If your `content/` folder is committed to your repository:
-
-- ✅ **No storage mounts needed**
-- ✅ GitOps workflow - push to deploy
-- ✅ Content versioned with code
+### Option A: content in the repository
 
 ```
 your-repo/
-├── content/          ← Committed to Git
+├── content/          ← committed
 │   ├── nav.md
 │   ├── home.md
 │   └── guides/
-├── private/          ← Committed (or use env vars for allowlist)
+├── private/
 │   └── allowlist.json
 └── ... app files
 ```
 
-**Workflow:**
-1. Edit content locally
-2. `git push origin main`
-3. Coolify auto-deploys
+Push to the deployed branch and Coolify rebuilds and redeploys. The Dockerfile copies content last, so a content-only push reuses the cached app build and only rewrites the small content layer. That needs two things: the Docker build cache must be kept (Step 1.3), and **Include Source Commit in Build** must stay off in the application's advanced settings. When it is on, Coolify passes the commit id into every build stage, which forces a full rebuild on every push.
 
-### Option B: External Content (Directory Mounts)
+### Option B: content on a mounted directory
 
-Only use if content lives **outside** your repository:
+1. Add a **Directory Mount** for content: source `/data/coolify/applications/{app-id}/content`, destination `/app/content`.
+2. Add one for private files: source `/data/coolify/applications/{app-id}/private`, destination `/app/private`.
+3. Copy your content to the source directories on the server.
 
-1. Add **Directory Mount** for content:
-   - Source: `/data/coolify/applications/{app-id}/content`
-   - Destination: `/app/content`
-
-2. Add **Directory Mount** for private:
-   - Source: `/data/coolify/applications/{app-id}/private`
-   - Destination: `/app/private`
-
-3. Copy content to server after first deploy:
-   ```bash
-   ssh user@your-server
-   cd /data/coolify/applications/{app-id}/
-   # Upload your content here
-   ```
+Edits to files in the mounted directory show up without a redeploy. The directories must be readable by the container user (uid 1001).
 
 ---
 
 ## Step 7: Deploy
 
-### 7.1 Initial Deployment
+Click **Deploy**.
 
-Click **Deploy** in Coolify.
-
-### 7.2 Expected Timeline
+### Typical timing
 
 | Phase | Duration | Notes |
 |-------|----------|-------|
-| Clone repository | 10-30s | Depends on repo size |
-| Install dependencies | 1-5 min | First deploy is slowest |
-| Build client | 15-30s | Vite builds frontend |
-| Build server | 60-120s | Nitro builds backend |
-| Start container | 10-30s | |
-| Health check passes | 30-60s | After start period |
-| **Total** | **3-8 minutes** | First deploy |
+| Clone | 10–30s | |
+| Install dependencies | 1–5 min | Cached after the first deploy, as long as you don't prune |
+| Build | 1–2 min | Longer on 1-vCPU servers with swap |
+| Start and health check | 10–30s | |
 
-### 7.3 Watching the Build
-
-If Coolify UI shows **504 Gateway Timeout**:
-- This is normal - the UI timed out, but **build continues in background**
-- Wait a few minutes and refresh
-- Check via SSH: `docker ps -a` and `docker logs -f <container_id>`
+If the Coolify UI shows **504 Gateway Timeout** during a build, the UI timed out but the build continues. Refresh after a few minutes, or check with `docker ps -a` on the server.
 
 ---
 
-## Step 8: Verify Deployment
+## Step 8: Verify
 
-### 8.1 Check Application Status
-
-In Coolify, your application should show:
-- Status: **Running**
-- Health: **Healthy**
-
-### 8.2 Test Your Site
-
-Visit your domain and verify:
-- [ ] Homepage loads
-- [ ] Navigation works
-- [ ] Content renders correctly
-- [ ] Theme toggle works
-- [ ] Search works (⌘K)
-
-### 8.3 Test API Endpoints
+In Coolify the application should show **Running** and **Healthy**. Then check:
 
 ```bash
-# Health check
-curl https://your-domain.com/
-
-# LLM endpoint
-curl https://your-domain.com/llms.txt
-
-# Navigation API
-curl https://your-domain.com/api/navigation
+curl -s https://your-domain.com/_ready          # {"status":"ready",...}
+curl -sI https://your-domain.com/ | head -1      # 200 (302 to /login in private mode)
+curl -s https://your-domain.com/llms.txt | head  # public sites only
 ```
+
+---
+
+## CDN and Cloudflare
+
+Public sites work well behind Cloudflare. f0 sends long cache lifetimes for `/_nuxt/*` and shorter ones for `/llms.txt`, the sitemap and feeds.
+
+For **private** sites, f0 marks every response except `/_nuxt/*` as `Cache-Control: private, no-store`. Don't add cache rules that override this (for example "cache everything" on `/api/content/*` or `/llms.txt`): a shared cache would then serve signed-in content to anyone.
 
 ---
 
 ## Troubleshooting
 
-### Build Fails During "transforming..."
+### Build fails during "transforming..."
 
-**Cause**: Out of memory
+Out of memory. Add swap (Step 1.2) and set concurrent builds to 1 (Step 2.1).
 
-**Solution**:
-1. Add swap space (see Step 1.2)
-2. Reduce concurrent builds to 1 (see Step 2.1)
-3. Clear Docker cache: `docker builder prune -af`
+### Container starts, then stops
 
-### Container Starts Then Immediately Stops
+Usually the health check. Check port `3000`, scheme `http`, host `127.0.0.1`, path `/_ready`. Then read the logs: `docker logs <container_id>`.
 
-**Cause**: Health check misconfiguration
+### "Custom healthcheck found in Dockerfile"
 
-**Solution**:
-1. Verify Port is `3000` (not 80)
-2. Verify Scheme is `http` (not https)
-3. Increase Start Period to `60` or higher
-4. Check container logs: `docker logs <container_id>`
+Coolify found the Dockerfile's `HEALTHCHECK` while the dashboard health check is disabled. Enable the dashboard health check (Step 4).
 
-### "Custom healthcheck found in Dockerfile" Error
+### npm install takes 10+ minutes
 
-**Cause**: Conflicting HEALTHCHECK instructions
+Swap thrashing on a small server. Add swap or RAM, and stop pruning the build cache so dependencies are only installed when `package-lock.json` changes.
 
-**Solution**:
-1. Remove or comment out any HEALTHCHECK in your Dockerfile
-2. Use Coolify's built-in health check configuration instead
+### A private site is reachable without logging in
 
-### npm Install Takes Forever (10+ minutes)
-
-**Cause**: Low memory causing swap thrashing
-
-**Solution**:
-1. Add more swap space
-2. Upgrade server RAM
-3. Pre-build locally as workaround (see Appendix A)
-
-### 504 Gateway Timeout in Coolify UI
-
-**Cause**: UI timeout (build still running)
-
-**Solution**:
-1. Wait 5-10 minutes
-2. Refresh Coolify page
-3. Check build status via SSH: `docker ps -a`
+Check the `Auth mode` line in the startup log. If it says `public`, the mode is not set in the runtime environment (or, on a release before October 2026, it was set as `AUTH_MODE` instead of `NUXT_AUTH_MODE`). Set the `NUXT_` variables (Step 5), redeploy, and check that `curl -sI https://your-domain.com/guides` answers with a redirect to `/login`.
 
 ---
 
-## Appendix A: Pre-build Locally (Low-Memory Workaround)
+## Don't build locally and commit `.output`
 
-If your server cannot handle the build, build locally and deploy the output:
-
-### 1. Build Locally
-
-```bash
-# On your local machine
-npm run build
-```
-
-### 2. Commit Build Output
-
-```bash
-git add -f .output/
-git commit -m "Pre-built for deployment"
-git push
-```
-
-### 3. Use Simplified Dockerfile
-
-Create `Dockerfile.prebuild`:
-
-```dockerfile
-FROM node:20-alpine
-
-WORKDIR /app
-
-# Copy pre-built output
-COPY .output .output
-COPY content content
-COPY private private
-
-# Install only production dependencies
-COPY package*.json ./
-RUN npm ci --only=production
-
-EXPOSE 3000
-
-CMD ["node", ".output/server/index.mjs"]
-```
-
-Update Coolify to use this Dockerfile.
+Earlier versions of this guide suggested building on your own machine and committing `.output/` when the server was too small to build. Don't. The build output contains every value from your local `.env` (including `JWT_SECRET` and AWS keys), and it contains native modules for your machine's platform, which break image processing on Linux. If that was done, remove `.output` from the repository history and rotate those secrets. If a server is too small to build, add swap or build the image somewhere else.
 
 ---
 
-## Appendix B: Quick Reference Card
+## Quick reference
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                 f0 COOLIFY DEPLOYMENT                       │
-├─────────────────────────────────────────────────────────────┤
-│ BEFORE DEPLOY                                               │
-│   □ Server has 1GB+ RAM (or 2GB swap added)                │
-│   □ Concurrent builds set to 1                              │
-│   □ Docker cache cleared                                    │
-├─────────────────────────────────────────────────────────────┤
-│ HEALTH CHECK SETTINGS (Critical!)                           │
-│   □ Scheme: http (NOT https)                               │
-│   □ Port: 3000 (NOT 80)                                    │
-│   □ Start Period: 60+ seconds                              │
-│   □ Enable Healthcheck: ON                                 │
-├─────────────────────────────────────────────────────────────┤
-│ ENVIRONMENT VARIABLES                                       │
-│   □ AUTH_MODE=public                                       │
-│   □ NUXT_PUBLIC_SITE_NAME=Your Site                        │
-├─────────────────────────────────────────────────────────────┤
-│ AFTER DEPLOY                                                │
-│   □ Status shows "Running"                                 │
-│   □ Health shows "Healthy"                                 │
-│   □ Site loads correctly                                   │
-└─────────────────────────────────────────────────────────────┘
+BEFORE DEPLOY
+  □ 1GB+ RAM, or swap added
+  □ Concurrent builds: 1 on small servers
+  □ Docker build cache kept (no prune before deploys)
+
+HEALTH CHECK
+  □ Enabled; http, 127.0.0.1, port 3000, path /_ready
+
+ENVIRONMENT
+  □ NUXT_AUTH_MODE, set for runtime
+  □ NUXT_PUBLIC_SITE_NAME, NUXT_PUBLIC_SITE_URL
+  □ Private: NUXT_JWT_SECRET + NUXT_AWS_* + NUXT_EMAIL_FROM, all set together
+  □ Secrets not available at build time
+
+CONTENT
+  □ One strategy: in the repo, OR a mounted directory
+
+AFTER DEPLOY
+  □ Running and Healthy
+  □ /_ready answers 200
+  □ Private sites redirect to /login when signed out
 ```
 
 ---
 
-## Appendix C: Dockerfile Reference
-
-The default Dockerfile included with f0:
-
-```dockerfile
-FROM node:20-alpine
-
-WORKDIR /app
-
-# Copy package files
-COPY package*.json ./
-
-# Install dependencies
-RUN npm ci
-
-# Copy source code
-COPY . .
-
-# Build the application
-RUN npm run build
-
-# Expose port
-EXPOSE 3000
-
-# Start the application
-CMD ["node", ".output/server/index.mjs"]
-```
-
-> **Note**: No HEALTHCHECK instruction - use Coolify's built-in health check instead.
-
----
-
-## Version History
+## Version history
 
 | Date | Changes |
 |------|---------|
+| 2026-10-08 | Rewritten: NUXT_ variable names and secrets kept out of builds, /_ready health check, no cache pruning, one content strategy per site, CDN caveat for private sites, removed the pre-build-and-commit workaround |
 | 2026-02-07 | Initial guide based on deployment troubleshooting |
