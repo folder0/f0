@@ -155,8 +155,17 @@ function parseConfigFile(configPath: string): DirectoryConfig {
 }
 
 /**
+ * Default configuration for a directory that has no _config.md.
+ * Returned uncached for paths that do not exist, so unauthenticated
+ * ?path= values cannot grow the config cache.
+ */
+export function defaultDirectoryConfig(): DirectoryConfig {
+  return { ...DEFAULT_DOCS_CONFIG }
+}
+
+/**
  * Resolve the configuration for a content directory.
- * 
+ *
  * @param contentDir - Root content directory path
  * @param dirPath - Relative directory path within content (e.g., 'blog', '' for root)
  * @returns DirectoryConfig for the directory

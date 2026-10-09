@@ -12,6 +12,7 @@
 
 import { readdir, readFile, stat } from 'fs/promises'
 import { logger } from '../utils/logger'
+import { resolveContentSubdir } from '../utils/paths'
 import { join, basename, extname } from 'path'
 import {
   extractFrontmatter,
@@ -19,7 +20,7 @@ import {
   extractDateFromFilename,
   isMarkdownFile,
 } from '../utils/markdown'
-import { resolveDirectoryConfig } from '../utils/config'
+import { resolveDirectoryConfig, defaultDirectoryConfig } from '../utils/config'
 
 /**
  * Escape XML special characters
@@ -37,9 +38,17 @@ export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
   const query = getQuery(event)
 
-  const dirPath = ((query.path as string) || '/').replace(/^\//, '')
-  const dirConfig = resolveDirectoryConfig(config.contentDir, dirPath)
-  const fullPath = dirPath ? join(config.contentDir, dirPath) : config.contentDir
+  // Confine ?path= to the content directory (rejects '..', hidden segments,
+  // symlink escapes). A missing directory yields an empty feed, uncached.
+  const target = await resolveContentSubdir(config.contentDir, query.path)
+  if (!target.ok) {
+    throw createError({ statusCode: 400, statusMessage: 'Bad Request', data: { message: 'Invalid path' } })
+  }
+  const dirPath = target.rel
+  const dirConfig = target.exists
+    ? resolveDirectoryConfig(config.contentDir, dirPath)
+    : defaultDirectoryConfig()
+  const fullPath = target.abs
 
   const siteName = config.public.siteName || 'f0'
   const siteDescription = dirConfig.description || config.public.siteDescription || ''

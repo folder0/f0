@@ -25,6 +25,7 @@ import { parseApiSpec } from '../../utils/openapi-parser'
 import { resolveLayoutForPath, getConfigForPath } from '../../utils/config'
 import { getCachedContent } from '../../utils/cache'
 import { logger } from '../../utils/logger'
+import { hasHiddenSegment } from '../../utils/paths'
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
@@ -35,6 +36,15 @@ export default defineEventHandler(async (event) => {
     throw createError({
       statusCode: 403,
       statusMessage: 'Forbidden',
+    })
+  }
+
+  // Control and hidden files (_config.md, _brand.md, _drafts/, dotfiles) are
+  // never pages: 404 rather than revealing that they exist.
+  if (hasHiddenSegment(slug)) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: 'Not Found',
     })
   }
   

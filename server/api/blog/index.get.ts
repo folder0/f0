@@ -23,7 +23,8 @@ import {
   extractDateFromFilename,
   isMarkdownFile,
 } from '../../utils/markdown'
-import { resolveDirectoryConfig, type DirectoryConfig } from '../../utils/config'
+import { resolveDirectoryConfig, defaultDirectoryConfig, type DirectoryConfig } from '../../utils/config'
+import { resolveContentSubdir } from '../../utils/paths'
 import { logger } from '../../utils/logger'
 
 // =============================================================================
@@ -173,16 +174,24 @@ export default defineEventHandler(async (event): Promise<BlogIndexResponse> => {
   const config = useRuntimeConfig()
   const query = getQuery(event)
 
-  // Parse query params
-  const dirPath = ((query.path as string) || '/').replace(/^\//, '')
+  // Confine ?path= to the content directory (rejects '..', hidden segments,
+  // symlink escapes). A well-formed path that does not exist keeps returning
+  // an empty listing, without being cached.
+  const target = await resolveContentSubdir(config.contentDir, query.path)
+  if (!target.ok) {
+    throw createError({ statusCode: 400, statusMessage: 'Bad Request', data: { message: 'Invalid path' } })
+  }
+  const dirPath = target.rel
   const page = Math.max(1, parseInt(query.page as string) || 1)
   const tagFilter = (query.tag as string)?.toLowerCase() || ''
 
   // Get directory config
-  const dirConfig = resolveDirectoryConfig(config.contentDir, dirPath)
+  const dirConfig = target.exists
+    ? resolveDirectoryConfig(config.contentDir, dirPath)
+    : defaultDirectoryConfig()
 
   // Scan posts
-  let posts = await scanBlogPosts(config.contentDir, dirPath, dirConfig)
+  let posts = target.exists ? await scanBlogPosts(config.contentDir, dirPath, dirConfig) : []
 
   // Aggregate tags (before filtering)
   const tagMap = new Map<string, number>()
