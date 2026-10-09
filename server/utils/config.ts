@@ -40,7 +40,12 @@ export interface DirectoryConfig {
   heroImage: string
   /** Hero subtitle/tagline shown below the title */
   heroSubtitle: string
+  /** Blog index look: classic (list, default), cards (grid) or minimal (archive) */
+  preset: BlogPreset
 }
+
+export const BLOG_PRESETS = ['classic', 'cards', 'minimal'] as const
+export type BlogPreset = typeof BLOG_PRESETS[number]
 
 // =============================================================================
 // DEFAULTS
@@ -56,6 +61,7 @@ const DEFAULT_DOCS_CONFIG: DirectoryConfig = {
   dateFormat: 'long',
   heroImage: '',
   heroSubtitle: '',
+  preset: 'classic',
 }
 
 const DEFAULT_BLOG_CONFIG: DirectoryConfig = {
@@ -68,6 +74,7 @@ const DEFAULT_BLOG_CONFIG: DirectoryConfig = {
   dateFormat: 'long',
   heroImage: '',
   heroSubtitle: '',
+  preset: 'classic',
 }
 
 // =============================================================================
@@ -123,6 +130,14 @@ function resolveAssetUrl(path: string): string {
 // MAIN RESOLVER
 // =============================================================================
 
+function blogPreset(value: unknown, configPath: string): BlogPreset {
+  if (value === undefined || value === null || value === '') return 'classic'
+  const preset = String(value).trim().toLowerCase()
+  if ((BLOG_PRESETS as readonly string[]).includes(preset)) return preset as BlogPreset
+  logger.warn(`_config.md preset "${String(value).slice(0, 40)}" is unknown; using classic (choose ${BLOG_PRESETS.join(', ')})`, { path: configPath })
+  return 'classic'
+}
+
 /**
  * Parse a _config.md file into a DirectoryConfig
  */
@@ -146,6 +161,7 @@ function parseConfigFile(configPath: string): DirectoryConfig {
         : defaults.dateFormat),
       heroImage: resolveAssetUrl((fm.hero_image as string) || ''),
       heroSubtitle: (fm.hero_subtitle as string) || defaults.heroSubtitle,
+      preset: blogPreset(fm.preset, configPath),
     }
   } catch (error) {
     logger.warn('Error reading config', { path: configPath, error: error instanceof Error ? error.message : String(error) })

@@ -355,6 +355,38 @@ date_format: long                     # "long" (February 11, 2026), "short" (Feb
 ---
 ```
 
+### 2.2.1 — Choosing a Look
+
+Set `preset` in the blog's `_config.md`:
+
+| Preset | Look |
+|--------|------|
+| `classic` (default) | A list: title, excerpt, date and tags, with a small cover thumbnail |
+| `cards` | A responsive grid of cards with the cover image on top |
+| `minimal` | An archive list: titles with dates only |
+
+```yaml
+---
+layout: blog
+title: Engineering Blog
+preset: cards
+---
+```
+
+For finer control, set the blog's design tokens from your `_brand.md` `custom_css` file. Tokens are the supported way to restyle the blog; class names may change between releases.
+
+```css
+:root {
+  --blog-max-width: 960px;        /* blog index column */
+  --blog-post-max-width: 720px;   /* single post column */
+  --blog-card-radius: 12px;
+  --blog-excerpt-lines: 3;
+  --blog-cover-ratio: 16 / 9;
+}
+```
+
+All tokens are listed at the top of `assets/css/blog.css`. Presets set some tokens themselves; to change those within a preset, target `.blog-layout` instead of `:root`.
+
 ### 2.3 — Adding to Navigation
 
 Add the blog to your top navigation bar in `content/nav.md`:
@@ -791,6 +823,7 @@ This checks frontmatter YAML validity, broken image references, heading hierarch
 | `title` | string | `Blog` | `Engineering Blog` |
 | `description` | string | — | `Behind the scenes` |
 | `posts_per_page` | number | `10` | `15` |
+| `preset` | string | `classic` | `cards` (or `minimal`) |
 | `default_author` | string | — | `Acme Team` |
 | `date_format` | string | `long` | `short`, `relative` |
 

@@ -8,7 +8,7 @@
 -->
 
 <template>
-  <div class="blog-layout" :class="{ 'has-hero': hasHero }">
+  <div class="blog-layout" :class="{ 'has-hero': hasHero }" :data-blog-preset="data?.config.preset || 'classic'">
     <!-- Loading -->
     <div v-if="pending" class="loading">
       <div class="loading-spinner" />

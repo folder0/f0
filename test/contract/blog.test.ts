@@ -98,3 +98,21 @@ describe('feeds', () => {
     expect(feed.items.map((item: { title: string }) => item.title)).not.toContain('Draft Post')
   })
 })
+
+describe('blog presets', () => {
+  it('render the index with the preset from _config.md', async () => {
+    const html = await (await get(`${server.url}/news`)).text()
+    expect(html).toContain('data-blog-preset="classic"')
+    writeFileSync(join(site.contentDir, '03-news/_config.md'), '---\nlayout: blog\ntitle: News\npreset: cards\n---\n')
+    await new Promise(r => setTimeout(r, 20))
+    expect(await (await get(`${server.url}/news`)).text()).toContain('data-blog-preset="cards"')
+    expect((await json('/api/blog?path=/news')).config.preset).toBe('cards')
+  })
+
+  it('fall back to classic for an unknown preset, with a warning', async () => {
+    writeFileSync(join(site.contentDir, '03-news/_config.md'), '---\nlayout: blog\ntitle: News\npreset: fancy\n---\n')
+    await new Promise(r => setTimeout(r, 20))
+    expect((await json('/api/blog?path=/news')).config.preset).toBe('classic')
+    expect(server.output()).toMatch(/preset \\"fancy\\" is unknown/)
+  })
+})

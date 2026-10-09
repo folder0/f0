@@ -2,14 +2,43 @@
  * =============================================================================
  * F0 BLOG — Refined Documentation-Grade Styles
  * =============================================================================
+ *
+ * CUSTOMIZING
+ * - Pick a preset in the blog folder's _config.md: preset: classic (default),
+ *   cards (a grid with cover images on top) or minimal (an archive list).
+ * - Adjust any --blog-* token below from _brand.md custom_css, e.g.
+ *     :root { --blog-max-width: 960px; --blog-card-radius: 12px; }
+ *   Tokens are the supported way to restyle the blog; class names may change.
  */
+
+/* =============================================================================
+   DESIGN TOKENS (defaults reproduce the classic look)
+   ============================================================================= */
+
+:root {
+  --blog-max-width: 840px;          /* blog index column */
+  --blog-post-max-width: 680px;     /* single post column */
+  --blog-title-size: 1.875rem;      /* blog index heading */
+  --blog-card-title-size: 1.125rem;
+  --blog-card-gap: var(--spacing-6);
+  --blog-card-padding: var(--spacing-6) 0;
+  --blog-card-border: 1px solid var(--color-border-primary);
+  --blog-card-radius: 0;
+  --blog-card-background: transparent;
+  --blog-excerpt-lines: 2;
+  --blog-cover-width: 160px;        /* thumbnail next to a post in the list */
+  --blog-cover-ratio: 3 / 2;
+  --blog-cover-radius: 6px;
+  --blog-post-cover-ratio: 2 / 1;   /* cover at the top of a post */
+  --blog-post-cover-radius: 8px;
+}
 
 /* =============================================================================
    BLOG INDEX
    ============================================================================= */
 
 .blog-layout {
-  max-width: 840px;
+  max-width: var(--blog-max-width);
   margin: 0 auto;
   padding: 0 var(--spacing-4);
 }
@@ -19,7 +48,7 @@
 }
 
 .blog-header h1 {
-  font-size: 1.875rem;
+  font-size: var(--blog-title-size);
   font-weight: 700;
   margin: 0 0 6px 0;
   color: var(--color-text-primary);
@@ -95,9 +124,11 @@
 .post-card {
   display: flex;
   align-items: flex-start;
-  gap: var(--spacing-6);
-  padding: var(--spacing-6) 0;
-  border-bottom: 1px solid var(--color-border-primary);
+  gap: var(--blog-card-gap);
+  padding: var(--blog-card-padding);
+  border-bottom: var(--blog-card-border);
+  border-radius: var(--blog-card-radius);
+  background: var(--blog-card-background);
 }
 
 .post-card:first-child {
@@ -110,7 +141,7 @@
 }
 
 .post-card-title {
-  font-size: 1.125rem;
+  font-size: var(--blog-card-title-size);
   font-weight: 600;
   color: var(--color-text-primary);
   margin: 0 0 6px 0;
@@ -139,7 +170,7 @@
   line-height: 1.6;
   margin: 0 0 8px 0;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: var(--blog-excerpt-lines);
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -183,11 +214,11 @@
 
 /* Cover thumbnail */
 .post-card-cover {
-  width: 160px;
-  min-width: 160px;
-  aspect-ratio: 3 / 2;
+  width: var(--blog-cover-width);
+  min-width: var(--blog-cover-width);
+  aspect-ratio: var(--blog-cover-ratio);
   object-fit: cover;
-  border-radius: 6px;
+  border-radius: var(--blog-cover-radius);
   flex-shrink: 0;
 }
 
@@ -306,16 +337,16 @@
    ============================================================================= */
 
 .blog-post-layout {
-  max-width: 680px;
+  max-width: var(--blog-post-max-width);
   margin: 0 auto;
   padding: 0 var(--spacing-4);
 }
 
 .blog-post-cover {
   width: 100%;
-  border-radius: 8px;
+  border-radius: var(--blog-post-cover-radius);
   margin-bottom: var(--spacing-8);
-  aspect-ratio: 2 / 1;
+  aspect-ratio: var(--blog-post-cover-ratio);
   object-fit: cover;
 }
 
@@ -596,3 +627,77 @@
   margin: 0 auto;
   padding: var(--spacing-8) var(--spacing-4);
 }
+
+/* =============================================================================
+   PRESETS (_config.md preset:)
+   ============================================================================= */
+
+/* cards: a responsive grid, cover image on top of each card */
+.blog-layout[data-blog-preset="cards"] {
+  --blog-max-width: 1040px;
+  --blog-card-gap: 0;
+  --blog-card-padding: 0;
+  --blog-card-border: 1px solid var(--color-border-primary);
+  --blog-card-radius: 10px;
+  --blog-card-background: var(--color-bg-primary);
+  --blog-excerpt-lines: 3;
+  --blog-cover-width: 100%;
+  --blog-cover-ratio: 16 / 9;
+  --blog-cover-radius: 0;
+}
+
+.blog-layout[data-blog-preset="cards"] .blog-post-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--spacing-6);
+}
+
+.blog-layout[data-blog-preset="cards"] .post-card {
+  flex-direction: column-reverse;
+  justify-content: flex-end;
+  border: var(--blog-card-border);
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+
+.blog-layout[data-blog-preset="cards"] .post-card:hover {
+  border-color: var(--color-accent);
+}
+
+.blog-layout[data-blog-preset="cards"] .post-card-body {
+  padding: var(--spacing-4) var(--spacing-5) var(--spacing-5);
+}
+
+/* The docs theme rules every h2; card titles in the newer presets go without */
+.blog-layout[data-blog-preset="cards"] .post-card-title,
+.blog-layout[data-blog-preset="minimal"] .post-card-title {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+/* minimal: an archive list, title and date only */
+.blog-layout[data-blog-preset="minimal"] {
+  --blog-card-padding: var(--spacing-3) 0;
+  --blog-card-border: 0;
+  --blog-card-title-size: 1rem;
+}
+
+.blog-layout[data-blog-preset="minimal"] .post-card-body {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-4);
+}
+
+.blog-layout[data-blog-preset="minimal"] .post-card-title {
+  margin: 0;
+}
+
+.blog-layout[data-blog-preset="minimal"] .post-card-excerpt,
+.blog-layout[data-blog-preset="minimal"] .post-card-cover,
+.blog-layout[data-blog-preset="minimal"] .post-card-meta .meta-sep,
+.blog-layout[data-blog-preset="minimal"] .post-card-reading,
+.blog-layout[data-blog-preset="minimal"] .post-card-tag {
+  display: none;
+}
+
