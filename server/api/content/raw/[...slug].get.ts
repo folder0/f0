@@ -26,11 +26,17 @@
  */
 
 import { readFile } from 'fs/promises'
-import { resolve, basename } from 'path'
+import { basename } from 'path'
 import { resolveContentPath } from '../../../utils/navigation'
 import { logger } from '../../../utils/logger'
 import { hasHiddenSegment } from '../../../utils/paths'
 import { f0Config } from '../../../utils/f0-config'
+import { extractFrontmatter } from '../../../utils/markdown'
+
+/** Percent-encode everything outside printable ASCII so the value is a valid header. */
+function headerSafe(value: string): string {
+  return value.replace(/[^\x20-\x7e]/gu, char => encodeURIComponent(char))
+}
 
 export default defineEventHandler(async (event) => {
   const settings = f0Config()
@@ -73,30 +79,32 @@ export default defineEventHandler(async (event) => {
     // Read raw content
     const content = await readFile(filePath, 'utf-8')
     
-    // Extract title for headers
-    let title = ''
-    const frontmatterMatch = content.match(/^---\n[\s\S]*?title:\s*["']?([^"'\n]+)["']?[\s\S]*?\n---\n/)
-    if (frontmatterMatch) {
-      title = frontmatterMatch[1]
-    } else {
-      const h1Match = content.match(/^#\s+(.+)$/m)
-      title = h1Match ? h1Match[1] : basename(filePath, '.md')
-    }
+    // Extract title for headers (frontmatter title, then first H1, then file name)
+    const { frontmatter, content: body } = extractFrontmatter(content)
+    const h1Match = body.match(/^#\s+(.+)$/m)
+    const title = (typeof frontmatter.title === 'string' && frontmatter.title.trim())
+      || (h1Match ? h1Match[1].trim() : '')
+      || basename(filePath, '.md')
     
     // Calculate word count (rough estimate)
     const wordCount = content.split(/\s+/).length
     
     // Set headers
     setHeader(event, 'Content-Type', 'text/markdown; charset=utf-8')
-    setHeader(event, 'X-Page-Title', title)
-    setHeader(event, 'X-Page-Path', `/${contentSlug}`)
+    // Header values must be Latin-1 without control characters, or Node throws
+    // (a 500 for any title in Greek, CJK, emoji ...). Anything outside printable
+    // ASCII is percent-encoded as UTF-8; plain ASCII titles are unchanged.
+    setHeader(event, 'X-Page-Title', headerSafe(title))
+    setHeader(event, 'X-Page-Path', headerSafe(`/${contentSlug}`))
     setHeader(event, 'X-Word-Count', String(wordCount))
     setHeader(event, 'Cache-Control', 'public, max-age=300') // 5 minute cache
     
     // Set download header if requested
     if (download) {
       const filename = contentSlug.replace(/\//g, '-') + '.md'
-      setHeader(event, 'Content-Disposition', `attachment; filename="${filename}"`)
+      // ASCII fallback plus the exact UTF-8 name (RFC 6266 / RFC 8187)
+      const asciiName = filename.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_')
+      setHeader(event, 'Content-Disposition', `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(filename)}`)
     }
     
     return content
