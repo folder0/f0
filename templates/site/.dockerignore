@@ -1,0 +1,5 @@
+# Only content and private files go into the image
+*
+!content
+!private
+content/.cache

@@ -23,7 +23,7 @@ COPY --chown=1001:1001 content ./content
 COPY --chown=1001:1001 private ./private
 ```
 
-Pin a version tag (or a digest) rather than `latest`, so a site changes engine only when you choose to. GitHub creates the package as private on its first publish; set its visibility to public in the package settings, or give the servers that build sites a token with `read:packages`.
+`templates/site/` is a ready-made site repository in this layout, with the steps to move an existing fork onto it. Pin a version tag (or a digest) rather than `latest`, so a site changes engine only when you choose to. GitHub creates the package as private on its first publish; set its visibility to public in the package settings, or give the servers that build sites a token with `read:packages`.
 
 | Platform | Notes |
 |----------|-------|
