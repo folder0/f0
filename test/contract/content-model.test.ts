@@ -130,3 +130,33 @@ describe('URL resolution', () => {
     expect((await get(`${server.url}/api/content/guides/renamed`)).status).toBe(200)
   })
 })
+
+describe('site search quality', () => {
+  const search = async (q: string) => ((await json(`/api/search?q=${encodeURIComponent(q)}`)).results as { path: string, title: string, excerpt: string }[])
+
+  it('matches word prefixes while typing', async () => {
+    expect((await search('insta')).map(r => r.path)).toContain('/guides/setup')
+  })
+
+  it('forgives a small typo in longer words', async () => {
+    expect((await search('windos')).map(r => r.path)).toContain('/guides/crlf')
+  })
+
+  it('ranks a title match above a body mention', async () => {
+    const results = await search('release')
+    expect(results[0].path).toBe('/guides/changelog/release')
+  })
+
+  it('centers the excerpt on the matched word', async () => {
+    const [first] = await search('rotat')
+    expect(first.path).toBe('/guides/private-keys')
+    expect(first.excerpt.toLowerCase()).toContain('rotation')
+  })
+
+  it('keeps the response shape', async () => {
+    const body = await json('/api/search?q=intro')
+    expect(Object.keys(body).sort()).toEqual(['query', 'results', 'total'])
+    expect(Object.keys(body.results[0]).sort()).toEqual(['excerpt', 'path', 'section', 'title'])
+  })
+})
+

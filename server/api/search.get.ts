@@ -31,22 +31,8 @@ import { isConfinedEntry } from '../utils/paths'
 import { f0Config } from '../utils/f0-config'
 import { fileToUrlPath, readFrontmatter, resolvePageTitle, titleFromFileName } from '../utils/content-core'
 import { hiddenFromListings } from '../utils/drafts'
+import MiniSearch from 'minisearch'
 import { onContentChange } from '../utils/invalidation'
-
-/**
- * Count non-overlapping occurrences of `needle` in `haystack`.
- * Uses indexOf rather than a user-built RegExp to avoid regex injection / ReDoS.
- */
-function countOccurrences(haystack: string, needle: string): number {
-  if (!needle) return 0
-  let count = 0
-  let index = haystack.indexOf(needle)
-  while (index !== -1) {
-    count++
-    index = haystack.indexOf(needle, index + needle.length)
-  }
-  return count
-}
 
 interface SearchResult {
   title: string
@@ -66,7 +52,24 @@ interface ContentItem {
 // Cache for content index
 let contentIndex: ContentItem[] | null = null
 let indexTimestamp: number = 0
-onContentChange('search', () => { contentIndex = null })
+// Full-text index over the same items: prefix matches while typing, small
+// typos forgiven, title and path weighted above body text
+let searchIndex: MiniSearch<IndexedItem> | null = null
+onContentChange('search', () => { contentIndex = null; searchIndex = null })
+
+interface IndexedItem extends ContentItem {
+  id: number
+}
+
+function buildSearchIndex(items: ContentItem[]): MiniSearch<IndexedItem> {
+  const index = new MiniSearch<IndexedItem>({
+    fields: ['title', 'path', 'section', 'content'],
+    // Split paths and identifiers on separators as well as spaces
+    tokenize: text => text.split(/[\s\p{P}\p{S}]+/u).filter(Boolean),
+  })
+  index.addAll(items.map((item, id) => ({ ...item, id })))
+  return index
+}
 const INDEX_TTL = 60000 // Rebuild index every 60 seconds
 
 /**
@@ -143,6 +146,7 @@ async function buildContentIndex(contentDir: string): Promise<ContentItem[]> {
   
   // Cache the index
   contentIndex = items
+  searchIndex = buildSearchIndex(items)
   indexTimestamp = now
   
   return items
@@ -180,69 +184,28 @@ function markdownToPlainTextSimple(content: string): string {
  * Search content and return ranked results
  */
 function searchContent(items: ContentItem[], query: string): SearchResult[] {
-  const queryLower = query.toLowerCase()
-  const queryTerms = queryLower.split(/\s+/).filter(t => t.length > 1)
-  
-  if (queryTerms.length === 0) {
-    return []
-  }
-  
-  const results: SearchResult[] = []
-  
-  for (const item of items) {
-    const titleLower = item.title.toLowerCase()
-    const contentLower = item.content.toLowerCase()
-    
-    // Calculate relevance score
-    let score = 0
-    let matchedTerms = 0
-    
-    for (const term of queryTerms) {
-      // Title match (high score)
-      if (titleLower.includes(term)) {
-        score += 10
-        matchedTerms++
-        
-        // Exact title match bonus
-        if (titleLower === term) {
-          score += 20
-        }
-      }
-      
-      // Content match
-      const contentMatches = countOccurrences(contentLower, term)
-      if (contentMatches > 0) {
-        score += Math.min(contentMatches, 5) // Cap at 5 matches
-        matchedTerms++
-      }
-      
-      // Path match
-      if (item.path.toLowerCase().includes(term)) {
-        score += 3
-        matchedTerms++
-      }
+  const terms = query.toLowerCase().split(/\s+/).filter(t => t.length > 1)
+  if (terms.length === 0) return []
+
+  const index = searchIndex ?? (searchIndex = buildSearchIndex(items))
+  const hits = index.search(terms.join(' '), {
+    prefix: true,
+    fuzzy: term => (term.length > 4 ? 0.2 : false),
+    boost: { title: 4, path: 2, section: 1.5 },
+  })
+
+  return hits.slice(0, 10).map((hit) => {
+    const item = items[hit.id as number]
+    return {
+      title: item.title,
+      path: item.path,
+      // Center the excerpt on what actually matched (prefix and fuzzy hits
+      // match other words than the ones typed)
+      excerpt: generateExcerpt(item.content, [...new Set([...hit.terms, ...terms])]),
+      section: item.section,
+      score: hit.score,
     }
-    
-    // Only include if at least one term matched
-    if (matchedTerms > 0) {
-      // Generate excerpt around first match
-      const excerpt = generateExcerpt(item.content, queryTerms)
-      
-      results.push({
-        title: item.title,
-        path: item.path,
-        excerpt,
-        section: item.section,
-        score,
-      })
-    }
-  }
-  
-  // Sort by score descending
-  results.sort((a, b) => b.score - a.score)
-  
-  // Return top 10 results
-  return results.slice(0, 10)
+  })
 }
 
 /**

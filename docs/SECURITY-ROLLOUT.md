@@ -77,6 +77,7 @@ Expect conflicts where the fork changed the same files (for example `server/midd
 | Fonts (Inter, JetBrains Mono) are served by the site instead of Google Fonts | No requests to Google from readers' browsers; same look | Drop `fonts.googleapis.com` / `fonts.gstatic.com` from any CSP or privacy notice |
 | Light and dark logos are both in the page and CSS shows the right one | Light-mode readers no longer see the dark logo while the page loads | None |
 | Docs pages show breadcrumbs and previous/next links in sidebar order; "Edit this page" appears when `F0_EDIT_URL` is set | New navigation elements above and below docs content (classes `f0-breadcrumbs`, `f0-page-footer`, `f0-pager`) | Hide them with `custom_css` if a site does not want them |
+| Site search (`/api/search`, the search box) matches word prefixes, forgives small typos and ranks title matches first | Better results while typing; result order changes. The response shape is unchanged | None |
 | Only a folder literally named `private` (or `server`) is blocked | Pages such as `guides/private-keys` or `/servers-guide` stop returning 403 | Rename any page you relied on that block to hide |
 | Files and folders starting with `_` or `.` return 404 as pages | `/blog/_config` no longer shows the config file | None |
 | Raw HTML in Markdown is sanitized | `<script>`, `on*=` handlers, `javascript:` links, `<iframe srcdoc>`, `<object>`, `<embed>`, `<base>`, `<meta>`, `<link>` are removed from rendered pages | Move any intentional scripts out of content |
