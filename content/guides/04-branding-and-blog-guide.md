@@ -776,6 +776,7 @@ This checks frontmatter YAML validity, broken image references, heading hierarch
 | `logo_dark` | string | Same as `logo` | `./assets/images/logo-dark.svg` |
 | `favicon` | string | — | `./assets/images/favicon.png` |
 | `accent_color` | string | `#2563eb` | `"#0F172A"` |
+| `accent_exact` | boolean | `false` | `true` keeps `accent_color` exactly as written instead of adjusting it for readable contrast in light and dark mode |
 | `header_style` | string | `text_only` | `logo_and_text` |
 | `footer_text` | string | — | `"© 2026 Acme Corp."` |
 | `footer_links` | array | `[]` | `[{label: "Privacy", url: "/privacy"}]` |

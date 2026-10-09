@@ -402,7 +402,7 @@ f0 supports automatic dark/light mode with manual toggle.
 
 ### Via `_brand.md` (Recommended)
 
-Set `accent_color` in your `_brand.md` frontmatter. This overrides the CSS custom property site-wide. Add `custom_css` for full style control.
+Set `accent_color` in your `_brand.md` frontmatter. f0 derives the accent, tint and hover shades for light and dark mode, nudging the accent where needed so links stay readable (4.5:1 contrast) on each background; set `accent_exact: true` to use the color exactly as written. Add `custom_css` for full style control: it loads after the theme, so its rules win ties.
 
 ### Via CSS
 

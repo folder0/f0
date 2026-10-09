@@ -105,15 +105,19 @@ useHead(computed(() => {
   }
   
   if (brand.value?.customCss) {
+    // Loads after the theme stylesheet, so the site's own CSS wins ties
     (head.link as Record<string, string>[]).push({
       rel: 'stylesheet',
       href: brand.value.customCss,
+      tagPriority: 'low',
     })
   }
   
-  if (brand.value?.accentColor) {
+  if (brand.value?.accentCss) {
+    // Derived on the server: accent, tint and hover shades for light and dark
+    // mode, readable on each background (see server/utils/accent.ts)
     (head.style as Record<string, string>[]).push({
-      innerHTML: `:root { --color-accent: ${brand.value.accentColor}; --color-accent-light: ${brand.value.accentColor}20; } [data-theme="dark"] { --color-accent: ${brand.value.accentColor}; --color-accent-light: ${brand.value.accentColor}20; }`,
+      innerHTML: brand.value.accentCss,
     })
   }
   

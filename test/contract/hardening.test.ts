@@ -67,11 +67,35 @@ describe('brand accent colour', () => {
     expect(html).not.toContain('red;}')
   })
 
-  it('applies a valid accent colour', async () => {
+  it('applies a valid accent colour for both themes, readable on each background', async () => {
     writeFileSync(join(site.contentDir, '_brand.md'), '---\naccent_color: "#0d9488"\n---\n')
     await new Promise(r => setTimeout(r, 20))
     const html = await (await get(`${server.url}/`)).text()
-    expect(html).toContain('--color-accent: #0d9488')
+    // Teal is too light for text on white (3.7:1): darkened in light mode only
+    const light = html.match(/:root:root \{ --color-accent: (#[0-9a-f]{6});/)?.[1]
+    const dark = html.match(/:root\[data-theme="dark"\] \{ --color-accent: (#[0-9a-f]{6});/)?.[1]
+    expect(light).toBeTruthy()
+    expect(light).not.toBe('#0d9488')
+    expect(dark).toBe('#0d9488')
+    expect(html).toMatch(/--color-accent-dark: #[0-9a-f]{6}/)
+  })
+
+  it('keeps the accent as written with accent_exact', async () => {
+    writeFileSync(join(site.contentDir, '_brand.md'), '---\naccent_color: "#0d9488"\naccent_exact: true\n---\n')
+    await new Promise(r => setTimeout(r, 20))
+    const html = await (await get(`${server.url}/`)).text()
+    expect(html).toContain(':root:root { --color-accent: #0d9488;')
+  })
+
+  it('loads custom_css after the theme stylesheet', async () => {
+    writeFileSync(join(site.contentDir, 'assets/custom.css'), ':root { --color-text-primary: #123456; }\n')
+    writeFileSync(join(site.contentDir, '_brand.md'), '---\ncustom_css: ./assets/custom.css\n---\n')
+    await new Promise(r => setTimeout(r, 20))
+    const html = await (await get(`${server.url}/`)).text()
+    const theme = html.search(/<link rel="stylesheet" href="\/_nuxt\/entry\.[^"]+\.css"/)
+    const custom = html.indexOf('<link rel="stylesheet" href="/api/content/assets/custom.css"')
+    expect(theme).toBeGreaterThan(-1)
+    expect(custom).toBeGreaterThan(theme)
   })
 })
 

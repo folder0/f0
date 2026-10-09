@@ -24,6 +24,7 @@ import { join } from 'path'
 import { logger } from './logger'
 import { readFrontmatter, resolveAssetUrl as resolveContentAssetUrl } from './content-core'
 import { onContentChange } from './invalidation'
+import { accentStyle, deriveAccentPalette } from './accent'
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -43,6 +44,8 @@ export interface BrandConfig {
   favicon: string
   /** Accent color hex (e.g. "#2563eb") */
   accentColor: string
+  /** CSS applying the derived accent palette for light and dark mode ('' without accent_color) */
+  accentCss: string
   /** Header display style */
   headerStyle: 'logo_only' | 'logo_and_text' | 'text_only'
   /** Footer copyright/text */
@@ -64,6 +67,7 @@ const DEFAULT_BRAND: BrandConfig = {
   logoDark: '',
   favicon: '',
   accentColor: '',
+  accentCss: '',
   headerStyle: 'text_only',
   footerText: '',
   footerLinks: [],
@@ -172,11 +176,27 @@ export function getBrandConfig(contentDir: string): BrandConfig {
       }
     }
 
+    // The full palette (accent, tint, hover) for both themes, with contrast
+    // against each background unless accent_exact: true
+    let accentCss = ''
+    if (accentColor) {
+      const palette = deriveAccentPalette(accentColor, fm.accent_exact === true)
+      accentCss = accentStyle(palette)
+      if (palette.adjusted) {
+        logger.info('_brand.md accent_color adjusted for readable contrast (set accent_exact: true to keep it as written)', {
+          accent: accentColor,
+          light: palette.light.accent,
+          dark: palette.dark.accent,
+        })
+      }
+    }
+
     brandCache = {
       logo: resolveAssetUrl(fm.logo as string || ''),
       logoDark: resolveAssetUrl(fm.logo_dark as string || fm.logo as string || ''),
       favicon: resolveAssetUrl(fm.favicon as string || ''),
       accentColor,
+      accentCss,
       headerStyle: (['logo_only', 'logo_and_text', 'text_only'].includes(fm.header_style as string)
         ? fm.header_style as BrandConfig['headerStyle']
         : 'text_only'),
