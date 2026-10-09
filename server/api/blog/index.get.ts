@@ -27,6 +27,7 @@ import { resolveDirectoryConfig, defaultDirectoryConfig, type DirectoryConfig } 
 import { resolveContentSubdir } from '../../utils/paths'
 import { logger } from '../../utils/logger'
 import { f0Config } from '../../utils/f0-config'
+import { resolvePageTitle } from '../../utils/content-core'
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -94,16 +95,8 @@ async function scanBlogPosts(
       const cleanName = basename(entry.name, extname(entry.name))
         .replace(/^\d{4}-\d{2}-\d{2}-/, '')
         .replace(/^\d+-/, '')
-      const titleFromFilename = cleanName
-        .split('-')
-        .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(' ')
-
-      // Extract first H1 as fallback title
-      const h1Match = bodyContent.match(/^#\s+(.+)$/m)
-      const title = (frontmatter.title as string)
-        || (h1Match ? h1Match[1].trim() : null)
-        || titleFromFilename
+      // Same title rule as the post page: frontmatter title, H1, file name
+      const title = resolvePageTitle({ data: frontmatter, body: bodyContent }, entry.name)
 
       // Resolve date: frontmatter > filename > mtime
       let date: string

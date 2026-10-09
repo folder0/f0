@@ -29,6 +29,7 @@ import { getCachedContent } from '../utils/cache'
 import { logger } from '../utils/logger'
 import { isConfinedEntry } from '../utils/paths'
 import { f0Config } from '../utils/f0-config'
+import { fileToUrlPath, readFrontmatter, resolvePageTitle, titleFromFileName } from '../utils/content-core'
 
 /**
  * Count non-overlapping occurrences of `needle` in `haystack`.
@@ -92,12 +93,7 @@ async function buildContentIndex(contentDir: string): Promise<ContentItem[]> {
         
         if (entry.isDirectory()) {
           // Determine section name from folder
-          const sectionName = entry.name.replace(/^\d+-/, '')
-            .split('-')
-            .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-            .join(' ')
-          
-          await scanDir(fullPath, sectionName || section)
+          await scanDir(fullPath, titleFromFileName(entry.name) || section)
         } else if (entry.name.endsWith('.md') && await isConfinedEntry(dir, entry, contentDir)) {
           try {
             const fullFilePath = fullPath
@@ -112,31 +108,17 @@ async function buildContentIndex(contentDir: string): Promise<ContentItem[]> {
               plainContent = cached.plainText
             } catch {
               // Fallback to lightweight extraction if cache fails
-              const content = await readFile(fullPath, 'utf-8')
-              const { frontmatter, content: mdContent } = extractFrontmatterSimple(content)
-              title = frontmatter?.title as string || ''
-              if (!title) {
-                const h1Match = mdContent.match(/^#\s+(.+)$/m)
-                title = h1Match ? h1Match[1] : entry.name.replace(/\.md$/, '')
-              }
-              plainContent = markdownToPlainTextSimple(mdContent)
+              const doc = readFrontmatter(await readFile(fullPath, 'utf-8'))
+              title = resolvePageTitle(doc, entry.name)
+              plainContent = markdownToPlainTextSimple(doc.body)
             }
             
-            // Build URL path
-            const relativePath = relative(contentDir, fullPath)
-            const urlPath = '/' + relativePath
-              .replace(/\\/g, '/')
-              .replace(/^\d+-/, '')
-              .replace(/\/\d+-/g, '/')
-              .replace(/^\d{4}-\d{2}-\d{2}-/g, '')
-              .replace(/\/\d{4}-\d{2}-\d{2}-/g, '/')
-              .replace(/\.md$/, '')
-              .replace(/\/index$/, '')
-              .replace(/^home$/, '')
+            // Same URL rules as the sidebar (dated posts used to get /blog/02-11-x)
+            const urlPath = fileToUrlPath(relative(contentDir, fullPath))
             
             items.push({
               title,
-              path: urlPath || '/',
+              path: urlPath,
               content: plainContent,
               section: section || 'Home',
             })
@@ -157,42 +139,6 @@ async function buildContentIndex(contentDir: string): Promise<ContentItem[]> {
   indexTimestamp = now
   
   return items
-}
-
-/**
- * Simple frontmatter extraction (avoid importing complex module)
- */
-function extractFrontmatterSimple(content: string): { frontmatter: Record<string, unknown>, content: string } {
-  const match = content.match(/^---\n([\s\S]*?)\n---\n/)
-  
-  if (!match) {
-    return { frontmatter: {}, content }
-  }
-  
-  try {
-    // Simple YAML parsing for common fields
-    const yamlContent = match[1]
-    const frontmatter: Record<string, unknown> = {}
-    
-    const lines = yamlContent.split('\n')
-    for (const line of lines) {
-      const colonIndex = line.indexOf(':')
-      if (colonIndex > 0) {
-        const key = line.slice(0, colonIndex).trim()
-        let value = line.slice(colonIndex + 1).trim()
-        // Remove quotes if present
-        if ((value.startsWith('"') && value.endsWith('"')) ||
-            (value.startsWith("'") && value.endsWith("'"))) {
-          value = value.slice(1, -1)
-        }
-        frontmatter[key] = value
-      }
-    }
-    
-    return { frontmatter, content: content.slice(match[0].length) }
-  } catch {
-    return { frontmatter: {}, content }
-  }
 }
 
 /**

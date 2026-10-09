@@ -19,9 +19,9 @@
 
 import { readFileSync, existsSync } from 'fs'
 import { join, dirname } from 'path'
-import yaml from 'yaml'
 import { logger } from './logger'
 import { f0Config } from './f0-config'
+import { readFrontmatter, resolveAssetUrl as resolveContentAssetUrl } from './content-core'
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -95,15 +95,11 @@ export function invalidateConfigCache(): void {
 // =============================================================================
 
 function extractConfigFrontmatter(content: string): Record<string, unknown> {
-  const match = content.match(/^---\n([\s\S]*?)\n---/)
-  if (!match) return {}
-  
-  try {
-    return yaml.parse(match[1]) || {}
-  } catch {
-    logger.warn('Failed to parse _config.md frontmatter')
-    return {}
+  const doc = readFrontmatter(content)
+  if (doc.error) {
+    logger.warn('Failed to parse _config.md frontmatter', { error: doc.error })
   }
+  return doc.data
 }
 
 // =============================================================================
@@ -111,14 +107,11 @@ function extractConfigFrontmatter(content: string): Record<string, unknown> {
 // =============================================================================
 
 /**
- * Resolve a content-relative path (./assets/images/hero.jpg) to an API URL.
- * Absolute URLs (https://...) are returned as-is.
+ * Resolve an asset path (./assets/images/hero.jpg) to its URL, with the same
+ * rule as images in Markdown (see content-core resolveAssetUrl).
  */
 function resolveAssetUrl(path: string): string {
-  if (!path) return ''
-  if (path.startsWith('http://') || path.startsWith('https://')) return path
-  const cleaned = path.replace(/^\.\//, '')
-  return `/api/content/${cleaned}`
+  return path ? resolveContentAssetUrl(path) : ''
 }
 
 // =============================================================================

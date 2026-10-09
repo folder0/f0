@@ -36,11 +36,11 @@
  */
 
 import { readdir, readFile, stat } from 'fs/promises'
-import { join, basename, extname, relative } from 'path'
+import { join, extname, relative } from 'path'
 import { parseMarkdown, isMarkdownFile, isJsonSpecFile } from './markdown'
 import { logger } from './logger'
 import { isConfinedEntry, isConfinedPath } from './paths'
-import yaml from 'yaml'
+import { firstHeading, readFrontmatter, stringField, titleFromFileName } from './content-core'
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -238,19 +238,7 @@ function extractOrderFromFilename(filename: string): number | null {
  * "01-getting-started.md" → "Getting Started"
  */
 function cleanFilename(filename: string): string {
-  let name = basename(filename, extname(filename))
-  
-  // Remove date prefix (2026-02-11-)
-  name = name.replace(/^\d{4}-\d{2}-\d{2}-/, '')
-  
-  // Remove numeric prefix
-  name = name.replace(/^\d+-/, '')
-  
-  // Convert kebab-case to Title Case
-  return name
-    .split('-')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
+  return titleFromFileName(filename)
 }
 
 /**
@@ -266,30 +254,19 @@ function ensureLeadingSlash(path: string): string {
  */
 async function getTitleFromMarkdown(filePath: string): Promise<{ title: string; order: number | null }> {
   try {
-    const content = await readFile(filePath, 'utf-8')
+    const doc = readFrontmatter(await readFile(filePath, 'utf-8'))
     
-    // Extract frontmatter
-    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n/)
-    if (frontmatterMatch) {
-      try {
-        const frontmatter = yaml.parse(frontmatterMatch[1])
-        return {
-          title: frontmatter.title || cleanFilename(filePath),
-          order: typeof frontmatter.order === 'number' ? frontmatter.order : null,
-        }
-      } catch {
-        // Frontmatter parse failed, continue to H1 extraction
+    // With frontmatter, the sidebar uses its title or else the file name
+    // (a long H1 does not become the sidebar label)
+    if (doc.hasFrontmatter) {
+      return {
+        title: stringField(doc.data, 'title') ?? cleanFilename(filePath),
+        order: typeof doc.data.order === 'number' ? doc.data.order : null,
       }
     }
     
-    // Extract first H1
-    const h1Match = content.match(/^#\s+(.+)$/m)
-    if (h1Match) {
-      return { title: h1Match[1].trim(), order: null }
-    }
-    
-    // Fallback to filename
-    return { title: cleanFilename(filePath), order: null }
+    // Without frontmatter: first H1 (outside code fences), then the file name
+    return { title: firstHeading(doc.body) ?? cleanFilename(filePath), order: null }
   } catch {
     return { title: cleanFilename(filePath), order: null }
   }

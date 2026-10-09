@@ -27,6 +27,7 @@
  */
 
 import { unified, type Processor } from 'unified'
+import { firstHeading, readFrontmatter, resolveAssetUrl, stringField, titleFromFileName } from './content-core'
 import type { VFile } from 'vfile'
 import remarkParse from 'remark-parse'
 import remarkGfm from 'remark-gfm'
@@ -38,7 +39,6 @@ import rehypeRaw from 'rehype-raw'
 import { visit } from 'unist-util-visit'
 import type { Root, Text, Paragraph } from 'mdast'
 import type { Root as HastRoot, Element } from 'hast'
-import yaml from 'yaml'
 import { logger } from './logger'
 import { rehypeDropTableWhitespace, rehypeRestoreTableWhitespace, rehypeStripDangerous, stabilizeHtml } from './sanitize'
 
@@ -640,14 +640,8 @@ function rehypeResponsiveImages() {
       // Skip data URIs
       if (src.startsWith('data:')) return
 
-      // Resolve relative paths to API URLs
-      let apiSrc = src
-      if (src.startsWith('./assets/') || src.startsWith('assets/')) {
-        apiSrc = '/api/content/' + src.replace(/^\.\//, '')
-      } else if (src.startsWith('./') || !src.startsWith('/')) {
-        // Other relative paths — prefix with API
-        apiSrc = '/api/content/assets/' + src.replace(/^\.\//, '')
-      }
+      // Resolve relative paths to API URLs (same rule as cover_image, brand assets)
+      const apiSrc = resolveAssetUrl(src)
 
       const alt = (node.properties?.alt as string) || ''
       const ext = apiSrc.split('.').pop()?.toLowerCase() || ''
@@ -847,30 +841,17 @@ export function extractFrontmatter(content: string): {
   frontmatter: MarkdownFrontmatter
   content: string 
 } {
-  const frontmatterRegex = /^---\n([\s\S]*?)\n---\n/
-  const match = content.match(frontmatterRegex)
-  
-  if (!match) {
-    return { frontmatter: {}, content }
-  }
-  
-  try {
-    const frontmatter = yaml.parse(match[1]) as MarkdownFrontmatter
-    const contentWithoutFrontmatter = content.slice(match[0].length)
-    return { frontmatter, content: contentWithoutFrontmatter }
-  } catch {
-    // If YAML parsing fails, treat it as no frontmatter
-    logger.warn('Failed to parse frontmatter, treating as content')
-    return { frontmatter: {}, content }
-  }
+  // One reader for all of f0 (BOM, CRLF, empty blocks, missing final newline)
+  const { data, body } = readFrontmatter(content)
+  return { frontmatter: data as MarkdownFrontmatter, content: body }
 }
 
 /**
  * Extract the first H1 heading from markdown as fallback title
  */
 function extractTitle(content: string): string {
-  const match = content.match(/^#\s+(.+)$/m)
-  return match ? match[1].trim() : ''
+  // Fence-aware: a shell comment inside a code block is not a title
+  return firstHeading(content) ?? ''
 }
 
 // =============================================================================
@@ -993,7 +974,7 @@ function getMarkdownProcessor() {
  * @param content - Raw markdown content including frontmatter
  * @returns ParsedMarkdown object with all extracted data
  */
-export async function parseMarkdown(content: string): Promise<ParsedMarkdown> {
+export async function parseMarkdown(content: string, fallbackTitle: string = 'Untitled'): Promise<ParsedMarkdown> {
   // Extract frontmatter
   const { frontmatter, content: mdContent } = extractFrontmatter(content)
   
@@ -1019,7 +1000,7 @@ export async function parseMarkdown(content: string): Promise<ParsedMarkdown> {
       frontmatter,
       toc,
       plainText,
-      title: frontmatter.title || extractedTitle || 'Untitled',
+      title: stringField(frontmatter, 'title') ?? (extractedTitle || fallbackTitle),
     }
   } catch (error) {
     logger.error('Error parsing content', { error: error instanceof Error ? error.message : String(error) })
@@ -1030,7 +1011,7 @@ export async function parseMarkdown(content: string): Promise<ParsedMarkdown> {
       frontmatter,
       toc: [],
       plainText: mdContent,
-      title: frontmatter.title || extractedTitle || 'Untitled',
+      title: stringField(frontmatter, 'title') ?? (extractedTitle || fallbackTitle),
     }
   }
 }
@@ -1047,7 +1028,7 @@ export function generateExcerpt(markdownBody: string, maxLength: number = 160): 
   let text = markdownBody
 
   // Remove frontmatter if accidentally included
-  text = text.replace(/^---\n[\s\S]*?\n---\n?/, '')
+  text = readFrontmatter(text).body
 
   // Remove code blocks
   text = text.replace(/```[\s\S]*?```/g, '')
@@ -1105,7 +1086,7 @@ export function generateExcerpt(markdownBody: string, maxLength: number = 160): 
  */
 export function calculateReadingTime(markdownBody: string): number {
   // Strip frontmatter
-  const text = markdownBody.replace(/^---\n[\s\S]*?\n---\n?/, '')
+  const text = readFrontmatter(markdownBody).body
   const words = text.split(/\s+/).filter(w => w.length > 0).length
   return Math.max(1, Math.ceil(words / 200))
 }
@@ -1170,15 +1151,8 @@ export function extractFrontmatterSafe(content: string): MarkdownFrontmatter {
  */
 export function extractTitleSafe(content: string, fallback: string = 'Untitled'): string {
   try {
-    // Try frontmatter title first
-    const fm = extractFrontmatterSafe(content)
-    if (fm.title && typeof fm.title === 'string') return fm.title
-
-    // Try first H1
-    const match = content.match(/^#\s+(.+)$/m)
-    if (match) return match[1].trim()
-
-    return fallback
+    const doc = readFrontmatter(content)
+    return stringField(doc.data, 'title') ?? firstHeading(doc.body) ?? fallback
   } catch {
     return fallback
   }
@@ -1200,9 +1174,12 @@ export function extractTitleSafe(content: string, fallback: string = 'Untitled')
  * @returns ParsedMarkdown — always succeeds, never throws
  */
 export async function parseMarkdownSafe(content: string, filePath: string = 'unknown'): Promise<ParsedMarkdown> {
+  // Pages without a title or H1 are named after their file, never 'Untitled'
+  // and never the absolute path on the server
+  const fallbackTitle = filePath === 'unknown' ? 'Untitled' : titleFromFileName(filePath)
   // Guard: reject files over MAX_PARSE_SIZE
   if (content.length > MAX_PARSE_SIZE) {
-    const title = extractTitleSafe(content, filePath)
+    const title = extractTitleSafe(content, fallbackTitle)
     const isProduction = process.env.NODE_ENV === 'production'
     return {
       html: `<div class="callout callout-warning">
@@ -1216,10 +1193,10 @@ export async function parseMarkdownSafe(content: string, filePath: string = 'unk
   }
 
   try {
-    return await parseMarkdown(content)
+    return await parseMarkdown(content, fallbackTitle)
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
-    const title = extractTitleSafe(content, filePath)
+    const title = extractTitleSafe(content, fallbackTitle)
     const isProduction = process.env.NODE_ENV === 'production'
 
     // Log the error with context

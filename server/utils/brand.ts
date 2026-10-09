@@ -21,8 +21,8 @@
 
 import { readFileSync, existsSync, statSync } from 'fs'
 import { join } from 'path'
-import yaml from 'yaml'
 import { logger } from './logger'
+import { readFrontmatter, resolveAssetUrl as resolveContentAssetUrl } from './content-core'
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -103,10 +103,8 @@ let brandMtime: number = 0
  * Resolve a content-relative path (./assets/images/logo.svg) to an API URL.
  */
 function resolveAssetUrl(relativePath: string): string {
-  if (!relativePath) return ''
-  // Strip leading ./ 
-  const cleaned = relativePath.replace(/^\.\//, '')
-  return `/api/content/${cleaned}`
+  // Same rule as images in Markdown; absolute URLs (a CDN logo) pass through
+  return relativePath ? resolveContentAssetUrl(relativePath) : ''
 }
 
 // =============================================================================
@@ -137,15 +135,14 @@ export function getBrandConfig(contentDir: string): BrandConfig {
     }
 
     // Parse _brand.md
-    const content = readFileSync(brandPath, 'utf-8')
-    const match = content.match(/^---\n([\s\S]*?)\n---/)
-    if (!match) {
+    const doc = readFrontmatter(readFileSync(brandPath, 'utf-8'))
+    if (!doc.hasFrontmatter) {
       brandCache = { ...DEFAULT_BRAND }
       brandMtime = stats.mtimeMs
       return brandCache
     }
 
-    const fm = yaml.parse(match[1]) || {}
+    const fm = doc.data as Record<string, any>
 
     // Parse footer links
     let footerLinks: FooterLink[] = []

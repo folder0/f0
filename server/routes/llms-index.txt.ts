@@ -33,7 +33,7 @@ import { readdir, readFile, stat } from 'fs/promises'
 import { join, resolve } from 'path'
 import { logger } from '../utils/logger'
 import { isConfinedEntry } from '../utils/paths'
-import { markdownToPlainText, isMarkdownFile, extractFrontmatterSafe } from '../utils/markdown'
+import { markdownToPlainText, isMarkdownFile } from '../utils/markdown'
 import { f0Config } from '../utils/f0-config'
 
 // =============================================================================

@@ -20,7 +20,7 @@ import jwt from 'jsonwebtoken'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const SERVER_ENTRY = join(ROOT, '.output/server/index.mjs')
-const FIXTURE = join(ROOT, 'test/fixtures/site')
+const FIXTURES = join(ROOT, 'test/fixtures')
 
 export const TEST_JWT_SECRET = 'contract-test-secret-0123456789abcdef'
 
@@ -32,10 +32,13 @@ export interface Site {
   cleanup(): void
 }
 
-/** Copy the fixture site to a temp dir and add generated binary assets. */
-export async function prepareSite(): Promise<Site> {
+/**
+ * Copy a fixture site (test/fixtures/<name>) to a temp dir and add generated
+ * binary assets. 'site' is the baseline; 'edge-site' holds content edge cases.
+ */
+export async function prepareSite(fixture: 'site' | 'edge-site' = 'site'): Promise<Site> {
   const root = mkdtempSync(join(tmpdir(), 'f0-contract-'))
-  cpSync(FIXTURE, root, { recursive: true })
+  cpSync(join(FIXTURES, fixture), root, { recursive: true })
   const contentDir = join(root, 'content')
   const privateDir = join(root, 'private')
 

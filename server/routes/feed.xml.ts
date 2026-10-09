@@ -22,6 +22,7 @@ import {
 } from '../utils/markdown'
 import { resolveDirectoryConfig, defaultDirectoryConfig } from '../utils/config'
 import { f0Config } from '../utils/f0-config'
+import { resolvePageTitle } from '../utils/content-core'
 
 /**
  * Escape XML special characters
@@ -90,15 +91,7 @@ export default defineEventHandler(async (event) => {
       const cleanName = basename(entry.name, extname(entry.name))
         .replace(/^\d{4}-\d{2}-\d{2}-/, '')
         .replace(/^\d+-/, '')
-      const titleFromFilename = cleanName
-        .split('-')
-        .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(' ')
-
-      const h1Match = bodyContent.match(/^#\s+(.+)$/m)
-      const title = (frontmatter.title as string)
-        || (h1Match ? h1Match[1].trim() : null)
-        || titleFromFilename
+      const title = resolvePageTitle({ data: frontmatter, body: bodyContent }, entry.name)
 
       // Resolve date
       let date: string

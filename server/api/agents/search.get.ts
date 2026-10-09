@@ -54,6 +54,7 @@ import { join, relative } from 'path'
 import { logger } from '../../utils/logger'
 import { isConfinedEntry } from '../../utils/paths'
 import { f0Config } from '../../utils/f0-config'
+import { fileToUrlPath, readFrontmatter, resolvePageTitle, titleFromFileName } from '../../utils/content-core'
 
 /**
  * Count non-overlapping occurrences of `needle` in `haystack`.
@@ -129,33 +130,16 @@ async function buildContentIndex(contentDir: string): Promise<ContentItem[]> {
         if (entry.name === 'nav.md') continue
         
         if (entry.isDirectory()) {
-          const sectionName = entry.name.replace(/^\d+-/, '')
-            .split('-')
-            .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-            .join(' ')
-          
-          await scanDir(fullPath, sectionName || section)
+          await scanDir(fullPath, titleFromFileName(entry.name) || section)
         } else if (entry.name.endsWith('.md') && await isConfinedEntry(dir, entry, contentDir)) {
           try {
             const rawContent = await readFile(fullPath, 'utf-8')
-            const { frontmatter, content: mdContent } = extractFrontmatter(rawContent)
+            const doc = readFrontmatter(rawContent)
+            const mdContent = doc.body
             
-            // Build URL path
-            const relativePath = relative(contentDir, fullPath)
-            const urlPath = '/' + relativePath
-              .replace(/\\/g, '/')
-              .replace(/^\d+-/, '')
-              .replace(/\/\d+-/g, '/')
-              .replace(/\.md$/, '')
-              .replace(/\/index$/, '')
-              .replace(/^home$/, '')
-            
-            // Get title
-            let title = frontmatter?.title as string
-            if (!title) {
-              const h1Match = mdContent.match(/^#\s+(.+)$/m)
-              title = h1Match ? h1Match[1] : entry.name.replace(/\.md$/, '')
-            }
+            // Same URL and title rules as the sidebar and the page itself
+            const urlPath = fileToUrlPath(relative(contentDir, fullPath))
+            const title = resolvePageTitle(doc, entry.name)
             
             // Extract headings
             const headings = extractHeadings(mdContent)
@@ -170,7 +154,7 @@ async function buildContentIndex(contentDir: string): Promise<ContentItem[]> {
             
             items.push({
               title,
-              path: urlPath || '/',
+              path: urlPath,
               content: plainContent,
               rawMarkdown: rawContent,
               section: section || 'Home',
@@ -195,40 +179,6 @@ async function buildContentIndex(contentDir: string): Promise<ContentItem[]> {
   indexTimestamp = now
   
   return items
-}
-
-/**
- * Extract YAML frontmatter
- */
-function extractFrontmatter(content: string): { frontmatter: Record<string, unknown>, content: string } {
-  const match = content.match(/^---\n([\s\S]*?)\n---\n/)
-  
-  if (!match) {
-    return { frontmatter: {}, content }
-  }
-  
-  try {
-    const yamlContent = match[1]
-    const frontmatter: Record<string, unknown> = {}
-    
-    const lines = yamlContent.split('\n')
-    for (const line of lines) {
-      const colonIndex = line.indexOf(':')
-      if (colonIndex > 0) {
-        const key = line.slice(0, colonIndex).trim()
-        let value = line.slice(colonIndex + 1).trim()
-        if ((value.startsWith('"') && value.endsWith('"')) ||
-            (value.startsWith("'") && value.endsWith("'"))) {
-          value = value.slice(1, -1)
-        }
-        frontmatter[key] = value
-      }
-    }
-    
-    return { frontmatter, content: content.slice(match[0].length) }
-  } catch {
-    return { frontmatter: {}, content }
-  }
 }
 
 /**

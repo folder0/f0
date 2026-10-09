@@ -31,7 +31,7 @@ import { resolveContentPath } from '../../../utils/navigation'
 import { logger } from '../../../utils/logger'
 import { hasHiddenSegment } from '../../../utils/paths'
 import { f0Config } from '../../../utils/f0-config'
-import { extractFrontmatter } from '../../../utils/markdown'
+import { readFrontmatter, resolvePageTitle } from '../../../utils/content-core'
 
 /** Percent-encode everything outside printable ASCII so the value is a valid header. */
 function headerSafe(value: string): string {
@@ -79,12 +79,8 @@ export default defineEventHandler(async (event) => {
     // Read raw content
     const content = await readFile(filePath, 'utf-8')
     
-    // Extract title for headers (frontmatter title, then first H1, then file name)
-    const { frontmatter, content: body } = extractFrontmatter(content)
-    const h1Match = body.match(/^#\s+(.+)$/m)
-    const title = (typeof frontmatter.title === 'string' && frontmatter.title.trim())
-      || (h1Match ? h1Match[1].trim() : '')
-      || basename(filePath, '.md')
+    // Same title rule as the page: frontmatter title, then first H1, then file name
+    const title = resolvePageTitle(readFrontmatter(content), basename(filePath))
     
     // Calculate word count (rough estimate)
     const wordCount = content.split(/\s+/).length
