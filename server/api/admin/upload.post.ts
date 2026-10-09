@@ -27,12 +27,13 @@
  * - Size limit: 10MB
  */
 
-import { writeFile, mkdir } from 'fs/promises'
-import { join, dirname, extname, normalize } from 'path'
+import { lstat, writeFile, mkdir } from 'fs/promises'
+import { join, dirname, extname } from 'path'
 import { assertAdmin } from '../../utils/admin'
 import { logger } from '../../utils/logger'
 import { f0Config } from '../../utils/f0-config'
 import { invalidateContentCaches } from '../../utils/invalidation'
+import { isConfinedPath } from '../../utils/paths'
 
 // =============================================================================
 // CONFIGURATION
@@ -61,13 +62,20 @@ const ALLOWED_EXTENSIONS = [
  * Prevents directory traversal and ensures path is within content directory
  */
 function sanitizePath(inputPath: string): string | null {
-  // Normalize the path
-  let cleanPath = normalize(inputPath)
-    .replace(/^[/\\]+/, '')  // Remove leading slashes
-    .replace(/\.\./g, '')     // Remove path traversal
+  if (typeof inputPath !== 'string' || inputPath.includes('\0') || inputPath.includes('\\')) {
+    return null
+  }
+  
+  // Judge whole segments: no '..' or '.', and no dotfiles or dot-folders
+  // (.git, .cache, .env ...). '_' names (_config.md, _partials/) are allowed.
+  const segments = inputPath.split('/').filter(Boolean)
+  if (segments.length === 0 || segments.some(segment => segment.startsWith('.'))) {
+    return null
+  }
+  const cleanPath = segments.join('/')
   
   // Block access to private directory
-  if (cleanPath.toLowerCase().startsWith('private')) {
+  if (segments[0].toLowerCase() === 'private') {
     return null
   }
   
@@ -203,6 +211,17 @@ export default defineEventHandler(async (event) => {
     // Ensure directory exists
     await mkdir(dirname(fullPath), { recursive: true })
     
+    // Never write through a symlink: the target folder must really be inside
+    // the content directory, and an existing file must not be a link
+    const existing = await lstat(fullPath).catch(() => null)
+    if (!(await isConfinedPath(dirname(fullPath), settings.contentDir)) || existing?.isSymbolicLink()) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Bad Request',
+        data: { message: 'Invalid file path' },
+      })
+    }
+    
     // Write file
     await writeFile(fullPath, fileData.data)
     
@@ -220,6 +239,9 @@ export default defineEventHandler(async (event) => {
     }
     
   } catch (error) {
+    if (error && typeof error === 'object' && 'statusCode' in error) {
+      throw error
+    }
     logger.error('Failed to save uploaded file', { path: cleanPath, error: error instanceof Error ? error.message : String(error) })
     
     throw createError({

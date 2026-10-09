@@ -2,7 +2,7 @@
  * Private-mode sessions and admin access: explicit admins, revocable logout,
  * immediate effect of allowlist removals, SVG handling, login redirects.
  */
-import { readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { readdirSync, readFileSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
@@ -52,6 +52,20 @@ describe('admin access', () => {
     }
     expect((await upload('evil.svg', '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')).status).toBe(400)
     expect((await upload('uploaded.md', '# Uploaded\n')).status).toBe(200)
+  })
+
+  it('refuses upload paths into dot-folders, private/ or through symlinks', async () => {
+    const uploadTo = (path: string) => {
+      const form = new FormData()
+      form.append('file', new Blob(['# x\n']), 'x.md')
+      form.append('path', path)
+      return get(`${server.url}/api/admin/upload`, { method: 'POST', body: form, headers: bearer(mintToken('admin@example.com')) })
+    }
+    symlinkSync(site.root, join(site.contentDir, 'escape'))
+    for (const path of ['.git/x.md', 'guides/.cache/x.md', '../x.md', 'guides/../../x.md', 'private/x.md', 'escape/x.md']) {
+      expect((await uploadTo(path)).status, path).toBe(400)
+    }
+    expect((await uploadTo('guides/_partials/doc-footer.md')).status).toBe(200)
   })
 })
 
