@@ -76,6 +76,10 @@ describe('public mode baseline', () => {
     expect(await response.text()).toMatch(/^# Fixture Docs - Documentation Context/)
   })
 
+  it('keeps public caching headers in public mode', async () => {
+    expect((await get(`${server.url}/llms.txt`)).headers.get('cache-control')).toBe('public, max-age=3600')
+  })
+
   it('lists blog posts in the blog API and feed', async () => {
     const blog = await (await get(`${server.url}/api/blog?path=/blog`)).json()
     expect(blog.config.layout).toBe('blog')

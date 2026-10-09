@@ -107,8 +107,10 @@ export default defineEventHandler(async (event) => {
     return
   }
   
-  // Allow static assets
-  if (path.startsWith('/_nuxt/') || path.startsWith('/assets/') || path.match(/\.(js|css|png|jpg|svg|ico|woff2?)$/)) {
+  // Allow only the app's own fingerprinted build assets (needed to render
+  // /login) and the favicon. Do NOT exempt by file extension: content images
+  // under /api/content/assets/** are private content in private mode.
+  if (path.startsWith('/_nuxt/') || path === '/favicon.ico') {
     return
   }
   
