@@ -24,6 +24,7 @@
 
 import { readFile, writeFile, mkdir, stat } from 'fs/promises'
 import { existsSync } from 'fs'
+import { createHash } from 'crypto'
 import { join, dirname, basename, extname } from 'path'
 import { logger } from './logger'
 
@@ -50,9 +51,20 @@ export interface ProcessedImage {
 // =============================================================================
 
 const SUPPORTED_FORMATS = ['webp', 'avif', 'jpeg', 'jpg', 'png'] as const
-const MAX_WIDTH = 3840    // 4K max
-const MAX_HEIGHT = 2160
+
+// Requested sizes and qualities snap UP to these steps, so each source image
+// has a bounded number of variants (unbounded ?w/?h/?q values were a CPU and
+// disk exhaustion vector). The widths cover every size f0 itself emits.
+const SIZE_STEPS = [96, 160, 192, 320, 400, 800, 1200, 1600, 2400]
+const QUALITY_STEPS = [60, 75, 80, 85, 90]
+const MAX_WIDTH = SIZE_STEPS[SIZE_STEPS.length - 1]
+const MAX_HEIGHT = SIZE_STEPS[SIZE_STEPS.length - 1]
 const DEFAULT_QUALITY = 80
+
+/** Smallest step >= value, or the largest step when value exceeds them all. */
+function snapUp(value: number, steps: number[]): number {
+  return steps.find(step => step >= value) ?? steps[steps.length - 1]
+}
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.avif', '.gif', '.svg']
 
 // =============================================================================
@@ -82,11 +94,16 @@ async function getSharp(): Promise<typeof import('sharp') | null> {
 
 /**
  * Generate a cache filename for a processed image variant.
- * e.g., "photo.png" with w=800, f=webp, q=80 → "photo-w800-q80.webp"
+ * e.g. ".../guides/photo.png" with w=800, f=webp → "photo-1a2b3c4d5e6f-w800.webp"
+ *
+ * The short hash of the full source path keeps images that share a file name
+ * in different folders (guides/shot.png, blog/shot.png) from colliding in the
+ * flat cache directory and serving each other's pixels.
  */
-function getCacheKey(originalName: string, options: ImageOptions): string {
-  const name = basename(originalName, extname(originalName))
-  const parts = [name]
+function getCacheKey(sourcePath: string, options: ImageOptions): string {
+  const name = basename(sourcePath, extname(sourcePath))
+  const pathHash = createHash('sha1').update(sourcePath).digest('hex').slice(0, 12)
+  const parts = [name, pathHash]
 
   if (options.width) parts.push(`w${options.width}`)
   if (options.height) parts.push(`h${options.height}`)
@@ -94,7 +111,7 @@ function getCacheKey(originalName: string, options: ImageOptions): string {
 
   const ext = options.format && options.format !== 'original'
     ? `.${options.format === 'jpeg' ? 'jpg' : options.format}`
-    : extname(originalName)
+    : extname(sourcePath)
 
   return parts.join('-') + ext
 }
@@ -203,12 +220,12 @@ export function parseImageOptions(query: Record<string, unknown>): ImageOptions 
 
   if (w) {
     const width = parseInt(String(w), 10)
-    if (width > 0 && width <= MAX_WIDTH) options.width = width
+    if (width > 0) options.width = snapUp(width, SIZE_STEPS)
   }
 
   if (h) {
     const height = parseInt(String(h), 10)
-    if (height > 0 && height <= MAX_HEIGHT) options.height = height
+    if (height > 0) options.height = snapUp(height, SIZE_STEPS)
   }
 
   if (f) {
@@ -220,7 +237,7 @@ export function parseImageOptions(query: Record<string, unknown>): ImageOptions 
 
   if (q) {
     const quality = parseInt(String(q), 10)
-    if (quality >= 1 && quality <= 100) options.quality = quality
+    if (quality >= 1 && quality <= 100) options.quality = snapUp(quality, QUALITY_STEPS)
   }
 
   return Object.keys(options).length > 0 ? options : null
@@ -240,7 +257,7 @@ export async function getProcessedImage(
   cacheDir: string,
   options: ImageOptions
 ): Promise<ProcessedImage | null> {
-  const cacheKey = getCacheKey(basename(sourcePath), options)
+  const cacheKey = getCacheKey(sourcePath, options)
   const cachePath = join(cacheDir, cacheKey)
 
   // Check disk cache

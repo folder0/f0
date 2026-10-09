@@ -22,6 +22,7 @@
 
 import { access, stat } from 'fs/promises'
 import { constants } from 'fs'
+import { logger } from '../utils/logger'
 import { resolve, join } from 'path'
 
 export default defineEventHandler(async () => {
@@ -36,13 +37,14 @@ export default defineEventHandler(async () => {
     checks.contentDir = 'ok'
   } catch {
     checks.contentDir = 'fail'
+    // The path goes to the log, not the response: /_ready is unauthenticated.
+    logger.error('Readiness check failed: content directory not accessible', { contentDir })
     throw createError({
       statusCode: 503,
       statusMessage: 'Not Ready',
       data: {
         status: 'not_ready',
         reason: 'Content directory not accessible',
-        contentDir,
         checks,
         timestamp: Date.now(),
       },
@@ -60,7 +62,6 @@ export default defineEventHandler(async () => {
 
   return {
     status: 'ready',
-    contentDir,
     checks,
     timestamp: Date.now(),
   }

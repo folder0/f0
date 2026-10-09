@@ -30,7 +30,10 @@ let cachedLlmsTxt: string | null = null
 let cachedLlmsHash: string | null = null
 let cachedLlmsGeneratedAt: number = 0
 
-// Section-scoped cache (for future Phase 4.2)
+// Section-scoped cache, keyed by the ?section= values. Bounded LRU: section
+// strings come from unauthenticated query parameters, so an unbounded Map would
+// let arbitrary values grow memory without limit.
+const SECTION_CACHE_MAX = 64
 const sectionCache = new Map<string, { text: string; hash: string }>()
 
 // =============================================================================
@@ -114,11 +117,20 @@ export async function getCachedLlmsTxt(
     const cached = sectionCache.get(sectionKey)
 
     if (cached && cached.hash === currentHash) {
+      // Refresh recency: re-insert at the end of the Map's insertion order
+      sectionCache.delete(sectionKey)
+      sectionCache.set(sectionKey, cached)
       return cached.text
     }
 
     const text = await generateLlmText(contentDir, siteName, options)
+    sectionCache.delete(sectionKey)
     sectionCache.set(sectionKey, { text, hash: currentHash })
+    while (sectionCache.size > SECTION_CACHE_MAX) {
+      const oldest = sectionCache.keys().next().value
+      if (oldest === undefined) break
+      sectionCache.delete(oldest)
+    }
     return text
   }
 

@@ -1,0 +1,150 @@
+/**
+ * Input hardening: brand colour injection, bounded and collision-free image
+ * variants, readiness body, host-independent sitemap, webhook body limit and
+ * delivery dedupe.
+ */
+import { createHmac } from 'node:crypto'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { request } from 'node:http'
+import { join } from 'node:path'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { get, prepareSite, startServer, type RunningServer, type Site } from './harness'
+
+const WEBHOOK_SECRET = 'contract-webhook-secret'
+
+let site: Site
+let server: RunningServer
+
+beforeAll(async () => {
+  site = await prepareSite()
+
+  // Two images with the same file name in different folders
+  const { default: sharp } = await import('sharp')
+  mkdirSync(join(site.contentDir, 'assets/other'), { recursive: true })
+  await sharp({ create: { width: 300, height: 300, channels: 3, background: '#ff0000' } })
+    .png().toFile(join(site.contentDir, 'assets/other/pixel.png'))
+
+  server = await startServer({
+    site,
+    authMode: 'public',
+    env: { NUXT_PUBLIC_SITE_URL: '', GITHUB_WEBHOOK_SECRET: WEBHOOK_SECRET },
+  })
+})
+
+afterAll(async () => {
+  await server?.stop()
+  site?.cleanup()
+})
+
+/** GET with an explicit Host header (fetch does not allow overriding it). */
+function getWithHost(path: string, host: string): Promise<string> {
+  const { port } = new URL(server.url)
+  return new Promise((resolve, reject) => {
+    const req = request({ host: '127.0.0.1', port, path, headers: { host } }, (res) => {
+      let body = ''
+      res.on('data', (chunk) => { body += chunk })
+      res.on('end', () => resolve(body))
+    })
+    req.on('error', reject)
+    req.end()
+  })
+}
+
+async function imageWidth(response: Response): Promise<number | undefined> {
+  const { default: sharp } = await import('sharp')
+  return (await sharp(Buffer.from(await response.arrayBuffer())).metadata()).width
+}
+
+describe('brand accent colour', () => {
+  it('drops an accent_color that tries to break out of the style block', async () => {
+    writeFileSync(join(site.contentDir, '_brand.md'), '---\naccent_color: "red;}</style><script>alert(1)</script>"\n---\n')
+    await new Promise(r => setTimeout(r, 20))
+    const html = await (await get(`${server.url}/`)).text()
+    expect(html).not.toContain('<script>alert(1)</script>')
+    expect(html).not.toContain('red;}')
+  })
+
+  it('applies a valid accent colour', async () => {
+    writeFileSync(join(site.contentDir, '_brand.md'), '---\naccent_color: "#0d9488"\n---\n')
+    await new Promise(r => setTimeout(r, 20))
+    const html = await (await get(`${server.url}/`)).text()
+    expect(html).toContain('--color-accent: #0d9488')
+  })
+})
+
+describe('image variants', () => {
+  it('snaps arbitrary widths up to an allowed step', async () => {
+    const response = await get(`${server.url}/api/content/assets/images/pixel.png?w=500&f=webp`)
+    expect(response.status).toBe(200)
+    expect(await imageWidth(response)).toBe(800)
+  })
+
+  it('keeps same-named images in different folders apart in the variant cache', async () => {
+    const a = await get(`${server.url}/api/content/assets/images/pixel.png?w=160`)
+    const b = await get(`${server.url}/api/content/assets/other/pixel.png?w=160`)
+    const { default: sharp } = await import('sharp')
+    const statsA = await sharp(Buffer.from(await a.arrayBuffer())).stats()
+    const statsB = await sharp(Buffer.from(await b.arrayBuffer())).stats()
+    // pixel.png is blue (#2547b8), other/pixel.png is red: dominant colours differ
+    expect(statsA.dominant).not.toEqual(statsB.dominant)
+  })
+})
+
+describe('readiness probe', () => {
+  it('does not disclose the content directory path', async () => {
+    const body = await (await get(`${server.url}/_ready`)).text()
+    expect(body).not.toContain(site.contentDir)
+    expect(JSON.parse(body).status).toBe('ready')
+  })
+})
+
+describe('sitemap', () => {
+  it('uses each request host instead of caching the first one', async () => {
+    const poisoned = await getWithHost('/sitemap.xml', 'evil.test')
+    expect(poisoned).toContain('http://evil.test/')
+    const normal = await getWithHost('/sitemap.xml', 'docs.example.test')
+    expect(normal).toContain('http://docs.example.test/')
+    expect(normal).not.toContain('evil.test')
+  })
+})
+
+describe('webhook', () => {
+  const sign = (body: string) => `sha256=${createHmac('sha256', WEBHOOK_SECRET).update(body).digest('hex')}`
+
+  it('rejects bodies over 1MB with 413', async () => {
+    const body = 'x'.repeat(1024 * 1024 + 1)
+    const response = await get(`${server.url}/api/webhook`, {
+      method: 'POST',
+      body,
+      headers: { 'x-github-event': 'push', 'x-hub-signature-256': sign(body), 'content-type': 'application/json' },
+    })
+    expect(response.status).toBe(413)
+  })
+
+  it('processes a delivery once and ignores redelivery of the same id', async () => {
+    const body = JSON.stringify({ ref: 'refs/heads/main' })
+    const send = () => get(`${server.url}/api/webhook`, {
+      method: 'POST',
+      body,
+      headers: {
+        'x-github-event': 'push',
+        'x-github-delivery': 'delivery-123',
+        'x-hub-signature-256': sign(body),
+        'content-type': 'application/json',
+      },
+    })
+    const first = await (await send()).json()
+    expect(first.message).toBe('Content cache invalidated')
+    const second = await (await send()).json()
+    expect(second.message).toBe('Duplicate delivery ignored')
+  })
+
+  it('still rejects an invalid signature', async () => {
+    const response = await get(`${server.url}/api/webhook`, {
+      method: 'POST',
+      body: '{}',
+      headers: { 'x-github-event': 'push', 'x-hub-signature-256': 'sha256=deadbeef' },
+    })
+    expect(response.status).toBe(401)
+  })
+})

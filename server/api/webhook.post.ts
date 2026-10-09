@@ -30,7 +30,9 @@ import { invalidateContentCache } from '../utils/cache'
 import { invalidateConfigCache } from '../utils/config'
 import { invalidateLlmsCache } from '../utils/llms-cache'
 import { invalidateBrandCache } from '../utils/brand'
+import type { H3Event } from 'h3'
 import { logger } from '../utils/logger'
+import { storage } from '../utils/storage'
 
 // =============================================================================
 // SIGNATURE VERIFICATION
@@ -72,6 +74,39 @@ function verifySignature(
 }
 
 // =============================================================================
+// BODY LIMIT AND DEDUPE
+// =============================================================================
+
+const MAX_WEBHOOK_BODY_BYTES = 1024 * 1024   // GitHub push payloads are far smaller
+const DELIVERY_DEDUPE_SECONDS = 10 * 60
+
+/** Read the request body as UTF-8, failing with 413 once it exceeds maxBytes. */
+async function readBodyCapped(event: H3Event, maxBytes: number): Promise<string> {
+  const declared = Number(getHeader(event, 'content-length') || 0)
+  if (declared > maxBytes) {
+    throw createError({ statusCode: 413, statusMessage: 'Payload Too Large' })
+  }
+
+  const stream = getRequestWebStream(event)
+  if (!stream) return ''
+
+  const reader = stream.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.byteLength
+    if (size > maxBytes) {
+      await reader.cancel()
+      throw createError({ statusCode: 413, statusMessage: 'Payload Too Large' })
+    }
+    chunks.push(value)
+  }
+  return Buffer.concat(chunks).toString('utf8')
+}
+
+// =============================================================================
 // HANDLER
 // =============================================================================
 
@@ -88,9 +123,6 @@ export default defineEventHandler(async (event) => {
   
   logger.info('Webhook received', { event: githubEvent, delivery: deliveryId })
   
-  // Get raw body for signature verification
-  const rawBody = await readRawBody(event)
-  
   // Fail closed: without a configured secret we cannot authenticate the caller,
   // so we must reject rather than process an unauthenticated request. This
   // endpoint invalidates every content cache, so leaving it open would let
@@ -104,6 +136,10 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  // Read the raw body (needed for the signature) with a size cap, so an
+  // unauthenticated caller cannot make the server buffer an unbounded body.
+  const rawBody = await readBodyCapped(event, MAX_WEBHOOK_BODY_BYTES)
+
   // Verify signature
   if (!verifySignature(rawBody || '', signature, webhookSecret)) {
     logger.warn('Invalid webhook signature', { delivery: deliveryId })
@@ -112,6 +148,17 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Unauthorized',
       data: { message: 'Invalid webhook signature' },
     })
+  }
+
+  // GitHub retries deliveries; process each delivery id once. Only after the
+  // signature check, so ids cannot be pre-registered without the secret.
+  if (deliveryId) {
+    const key = `webhook-delivery:${deliveryId}`
+    if (await storage.exists(key)) {
+      logger.info('Duplicate webhook delivery ignored', { delivery: deliveryId })
+      return { success: true, message: 'Duplicate delivery ignored' }
+    }
+    await storage.set(key, true, DELIVERY_DEDUPE_SECONDS)
   }
 
   // Parse body — reject malformed JSON with a 400 rather than an uncaught 500.

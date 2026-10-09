@@ -223,11 +223,18 @@ async function setupMermaid() {
       } catch (err) {
         console.error('Mermaid render error:', err)
         // Show error state
-        block.innerHTML = `<div class="mermaid-error">
-          <strong>Diagram Error</strong>
-          <pre>${code}</pre>
-          <small>${err instanceof Error ? err.message : 'Failed to render diagram'}</small>
-        </div>`
+        // Build the error box with text nodes: the diagram source is author
+        // content and must never be parsed as HTML.
+        const box = document.createElement('div')
+        box.className = 'mermaid-error'
+        const heading = document.createElement('strong')
+        heading.textContent = 'Diagram Error'
+        const source = document.createElement('pre')
+        source.textContent = code
+        const message = document.createElement('small')
+        message.textContent = err instanceof Error ? err.message : 'Failed to render diagram'
+        box.append(heading, source, message)
+        block.replaceChildren(box)
         block.classList.add('mermaid-error-container')
       }
     }

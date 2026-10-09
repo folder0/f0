@@ -95,6 +95,10 @@ export default defineNitroPlugin(async () => {
   // =========================================================================
 
   const authMode = config.authMode || 'public'
+  if (!config.public.siteUrl) {
+    logger.warn('NUXT_PUBLIC_SITE_URL is not set: canonical URLs, sitemap and feed links fall back to the request host. Set it to the public site URL.')
+  }
+
   if (authMode === 'private') {
     const privateDir = resolve(process.cwd(), config.privateDir || './private')
     const allowlistPath = join(privateDir, 'allowlist.json')

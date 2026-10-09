@@ -71,6 +71,28 @@ const DEFAULT_BRAND: BrandConfig = {
 }
 
 // =============================================================================
+// CSS COLOUR VALIDATION
+// =============================================================================
+
+const HEX_COLOR = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i
+const FUNCTIONAL_COLOR = /^(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(\s*[-+0-9a-z.,%\s/]*\)$/i
+const NAMED_COLOR = /^[a-z]{3,30}$/i
+
+/**
+ * Return the value if it is a syntactically valid CSS colour (hex, a colour
+ * function, or a named colour), otherwise null. The allowed character sets
+ * exclude ; { } < > quotes and backslashes, so the result cannot break out of
+ * a CSS declaration or a <style> element.
+ */
+export function sanitizeCssColor(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const color = value.trim()
+  if (color.length === 0 || color.length > 64) return null
+  if (HEX_COLOR.test(color) || FUNCTIONAL_COLOR.test(color) || NAMED_COLOR.test(color)) return color
+  return null
+}
+
+// =============================================================================
 // MTIME-BASED CACHE
 // =============================================================================
 
@@ -136,11 +158,27 @@ export function getBrandConfig(contentDir: string): BrandConfig {
         }))
     }
 
+    // accent_color is interpolated into a <style> block, so only accept values
+    // that parse as a CSS colour. Anything else is dropped with a warning.
+    let accentColor = ''
+    if (fm.accent_color === null) {
+      logger.warn('_brand.md accent_color is empty. Quote hex values: accent_color: "#2563eb"', { path: brandPath })
+    }
+    else if (fm.accent_color !== undefined) {
+      const parsed = sanitizeCssColor(fm.accent_color)
+      if (parsed) {
+        accentColor = parsed
+      }
+      else {
+        logger.warn('_brand.md accent_color is not a valid CSS colour and was ignored', { path: brandPath, value: String(fm.accent_color).slice(0, 64) })
+      }
+    }
+
     brandCache = {
       logo: resolveAssetUrl(fm.logo as string || ''),
       logoDark: resolveAssetUrl(fm.logo_dark as string || fm.logo as string || ''),
       favicon: resolveAssetUrl(fm.favicon as string || ''),
-      accentColor: (fm.accent_color as string) || '',
+      accentColor,
       headerStyle: (['logo_only', 'logo_and_text', 'text_only'].includes(fm.header_style as string)
         ? fm.header_style as BrandConfig['headerStyle']
         : 'text_only'),

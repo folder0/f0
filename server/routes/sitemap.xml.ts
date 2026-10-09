@@ -36,7 +36,10 @@ interface SitemapEntry {
 // CACHE
 // =============================================================================
 
-let cachedSitemap: string | null = null
+// Cache the host-independent page list, not the XML: the XML embeds the base
+// URL, which comes from the request when NUXT_PUBLIC_SITE_URL is unset, and a
+// cached copy would pin every later response to the first requester's Host.
+let cachedPages: SitemapEntry[] | null = null
 let cachedSitemapHash: string | null = null
 
 // =============================================================================
@@ -203,29 +206,26 @@ export default defineEventHandler(async (event) => {
   try {
     // Check cache
     const currentHash = await computeSitemapHash(contentDir)
-    if (cachedSitemap && cachedSitemapHash === currentHash) {
-      setHeader(event, 'Content-Type', 'application/xml; charset=utf-8')
-      setHeader(event, 'Cache-Control', 'public, max-age=3600')
-      return cachedSitemap
+    let pages: SitemapEntry[]
+    if (cachedPages && cachedSitemapHash === currentHash) {
+      pages = cachedPages
+    }
+    else {
+      pages = await collectPages(contentDir, contentDir)
+
+      // Sort: homepage first, then alphabetically
+      pages.sort((a, b) => {
+        if (a.loc === '/') return -1
+        if (b.loc === '/') return 1
+        return a.loc.localeCompare(b.loc)
+      })
+
+      cachedPages = pages
+      cachedSitemapHash = currentHash
+      logger.info('Sitemap generated', { pages: pages.length })
     }
 
-    // Generate
-    const pages = await collectPages(contentDir, contentDir)
-
-    // Sort: homepage first, then alphabetically
-    pages.sort((a, b) => {
-      if (a.loc === '/') return -1
-      if (b.loc === '/') return 1
-      return a.loc.localeCompare(b.loc)
-    })
-
     const xml = buildSitemapXml(pages, baseUrl)
-
-    // Cache
-    cachedSitemap = xml
-    cachedSitemapHash = currentHash
-
-    logger.info('Sitemap generated', { pages: pages.length })
 
     setHeader(event, 'Content-Type', 'application/xml; charset=utf-8')
     setHeader(event, 'Cache-Control', 'public, max-age=3600')
