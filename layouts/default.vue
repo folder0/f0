@@ -88,6 +88,10 @@ const sidebarOpen = ref(false)
 
 const { data: brand } = await useFetch('/api/brand', { key: 'brand' })
 
+// Navigation is part of the server-rendered page (crawlers and readers
+// without JavaScript see the header and sidebar links)
+await useNavigation().ensureNavigation()
+
 // Inject accent color, favicon, and custom CSS into head
 useHead(computed(() => {
   const head: Record<string, unknown> = { link: [] as Record<string, string>[], style: [] as Record<string, string>[] }

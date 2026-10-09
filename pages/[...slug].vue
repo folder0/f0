@@ -57,7 +57,7 @@
       <!-- API documentation (OpenAPI/Postman) -->
       <ContentApiDocViewer
         v-else-if="content?.type === 'openapi' || content?.type === 'postman'"
-        :spec="content.spec"
+        :spec="{ ...content.spec, rawSpec: content.rawSpec }"
       />
       
       <!-- Unknown type fallback -->
@@ -88,6 +88,7 @@ interface ContentResponse {
   path?: string      // Page path for download feature
   layout?: 'docs' | 'blog'
   draft?: boolean
+  rawSpec?: string   // Original spec file, for the download button
   blog?: {
     date: string
     author: string
@@ -120,6 +121,9 @@ const { data: content, pending, error } = await useFetch<ContentResponse>(
   () => `/api/content/${slug.value}`,
   {
     watch: [slug],
+    // Only what the page uses goes into the HTML payload (frontmatter is
+    // already reflected in title, blog and draft)
+    pick: ['type', 'title', 'description', 'html', 'toc', 'spec', 'rawSpec', 'markdown', 'path', 'layout', 'draft', 'blog'],
     // Suppress 404 console noise — blog directories legitimately 404 here
     onResponseError({ response }) {
       if (response.status !== 404) {
@@ -133,28 +137,38 @@ const { data: content, pending, error } = await useFetch<ContentResponse>(
 // BLOG INDEX DETECTION
 // ---------------------------------------------------------------------------
 // If content 404s, check if this path is a blog directory root
-// If so, render BlogIndex instead of the error page
+// If so, render BlogIndex instead of the error page. Awaited, so the server
+// renders the blog index (it used to render "Page Not Found" and let the
+// browser swap it in).
 
-const isBlogIndex = ref(false)
 const blogIndexPath = computed(() => '/' + slug.value)
+const requestFetch = useRequestFetch()
 
-// Check if this is a blog directory when content returns 404
-watch([error, pending], async () => {
-  if (error.value && !pending.value) {
+const { data: blogIndexCheck } = await useAsyncData(
+  () => `blog-index:${slug.value}`,
+  async () => {
+    if (!error.value || error.value.statusCode !== 404) return false
     try {
-      const blogCheck = await $fetch<{ config: { layout: string } }>('/api/blog', {
+      const blogCheck = await requestFetch<{ config: { layout: string } }>('/api/blog', {
         query: { path: slug.value },
       })
-      if (blogCheck?.config?.layout === 'blog') {
-        isBlogIndex.value = true
-      }
+      return blogCheck?.config?.layout === 'blog'
     } catch {
       // Not a blog directory, show normal error
+      return false
     }
-  } else {
-    isBlogIndex.value = false
-  }
-}, { immediate: true })
+  },
+  { watch: [error] },
+)
+const isBlogIndex = computed(() => blogIndexCheck.value === true)
+
+// A missing page answers 404 (it answered 200 with a "Page Not Found" body)
+if (import.meta.server && error.value && !isBlogIndex.value) {
+  const status = error.value.statusCode && error.value.statusCode >= 400 && error.value.statusCode < 500
+    ? error.value.statusCode
+    : 404
+  setResponseStatus(useRequestEvent()!, status, status === 404 ? 'Not Found' : undefined)
+}
 
 // ---------------------------------------------------------------------------
 // SEO
