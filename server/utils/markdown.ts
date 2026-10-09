@@ -158,10 +158,71 @@ function remarkYouTube() {
  * 
  * Supported types: info, warning, error, success, tip, note, danger
  */
+// =============================================================================
+// CODE MASKING
+// =============================================================================
+
+interface FencedBlock {
+  /** The block exactly as written, fences included */
+  raw: string
+  /** The lines between the fences */
+  body: string
+}
+
+const MASK_TOKEN = /\uE000(F|C)(\d+)\uE001/g
+
+/**
+ * Replace fenced code blocks (``` and ~~~, any indentation, unclosed blocks
+ * running to the end) with one placeholder line each, so text rules (callout
+ * and embed syntax, plaintext conversion) never rewrite code. A page that
+ * documents `:::info` inside a code fence keeps it as code.
+ */
+function maskFencedCode(markdown: string): { text: string, blocks: FencedBlock[] } {
+  const blocks: FencedBlock[] = []
+  const out: string[] = []
+  const lines = markdown.split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    const open = lines[i].match(/^[ \t]*(`{3,}|~{3,})(.*)$/)
+    if (!open || (open[1][0] === '`' && open[2].includes('`'))) {
+      out.push(lines[i])
+      continue
+    }
+    const fence = open[1]
+    let end = i + 1
+    while (end < lines.length) {
+      const close = lines[end].match(/^[ \t]*(`{3,}|~{3,})[ \t]*$/)
+      if (close && close[1][0] === fence[0] && close[1].length >= fence.length) break
+      end++
+    }
+    const last = Math.min(end, lines.length - 1)
+    blocks.push({ raw: lines.slice(i, last + 1).join('\n'), body: lines.slice(i + 1, end).join('\n') })
+    out.push(`\uE000F${blocks.length - 1}\uE001`)
+    i = last
+  }
+  return { text: out.join('\n'), blocks }
+}
+
+/** Put masked fenced blocks back exactly as written. */
+function unmaskFencedCode(text: string, blocks: FencedBlock[]): string {
+  return text.replace(MASK_TOKEN, (token, kind, index) => (kind === 'F' ? blocks[Number(index)]?.raw ?? token : token))
+}
+
+/**
+ * Apply the directive preprocessors (callouts, embeds, :::api) to everything
+ * except fenced code.
+ */
+function preprocessDirectives(markdown: string): string {
+  const { text, blocks } = maskFencedCode(markdown)
+  return unmaskFencedCode(preprocessApiBlocks(preprocessEmbeds(preprocessCallouts(text))), blocks)
+}
+
 function preprocessCallouts(markdown: string): string {
   // Match callout blocks: :::type followed by content followed by :::
   // Use a regex that captures the type and content
-  const calloutRegex = /^:::(info|warning|error|success|tip|note|danger)\s*\n([\s\S]*?)\n:::\s*$/gm
+  // [ \t]* rather than \s*: \s* also consumed the blank line after the closing
+  // :::, which glued the next paragraph (often an image) into the raw <div>
+  // block, where it rendered as literal Markdown text
+  const calloutRegex = /^:::(info|warning|error|success|tip|note|danger)[ \t]*\n([\s\S]*?)\n:::[ \t]*$/gm
   
   return markdown.replace(calloutRegex, (match, type, content) => {
     // Normalize the type for CSS class
@@ -886,7 +947,16 @@ export function markdownToPlainText(content: string): string {
   // Remove frontmatter
   const { content: mdContent } = extractFrontmatter(content)
   
-  let text = mdContent
+  // Code is masked while the text rules run, then restored: inline code
+  // without backticks, fenced code without its fence lines. (The rules used to
+  // run over code too: NUXT_PUBLIC_SITE_NAME lost its underscores and a bash
+  // `# comment` became a heading.)
+  const { text: masked, blocks } = maskFencedCode(mdContent)
+  const inlineCode: string[] = []
+  let text = masked.replace(/`([^`\n]+)`/g, (_match, code: string) => {
+    inlineCode.push(code)
+    return `\uE000C${inlineCode.length - 1}\uE001`
+  })
   
   // Convert YouTube embeds to text reference
   text = text.replace(
@@ -911,22 +981,24 @@ export function markdownToPlainText(content: string): string {
   // Convert images to text description
   text = text.replace(/!\[([^\]]*)\]\([^)]+\)/g, '[Image: $1]')
   
-  // Remove inline code backticks (keep content)
-  text = text.replace(/`([^`]+)`/g, '$1')
-  
-  // Remove code block markers (keep content)
-  text = text.replace(/```[\w]*\n/g, '\n')
-  text = text.replace(/```/g, '')
-  
-  // Remove bold/italic markers
-  text = text.replace(/\*\*([^*]+)\*\*/g, '$1')
-  text = text.replace(/\*([^*]+)\*/g, '$1')
-  text = text.replace(/__([^_]+)__/g, '$1')
-  text = text.replace(/_([^_]+)_/g, '$1')
+  // Remove bold/italic markers. Emphasis does not start or end next to a
+  // space (so "*.md and *.json" survives), and underscores inside words are
+  // not emphasis (so snake_case and SCREAMING_CASE survive).
+  text = text.replace(/\*\*(?!\s)([^*\n]+?)(?<!\s)\*\*/g, '$1')
+  text = text.replace(/\*(?!\s)([^*\n]+?)(?<!\s)\*/g, '$1')
+  text = text.replace(/(^|[^\p{L}\p{N}_])__(?!\s)([^_\n]+?)(?<!\s)__(?![\p{L}\p{N}_])/gu, '$1$2')
+  text = text.replace(/(^|[^\p{L}\p{N}_])_(?!\s)([^_\n]+?)(?<!\s)_(?![\p{L}\p{N}_])/gu, '$1$2')
   
   // Remove horizontal rules
   text = text.replace(/^---+$/gm, '')
   text = text.replace(/^\*\*\*+$/gm, '')
+  
+  // Restore code
+  text = text.replace(MASK_TOKEN, (token, kind, index) => {
+    if (kind === 'C') return inlineCode[Number(index)] ?? token
+    const block = blocks[Number(index)]
+    return block ? `\n${block.body}\n` : token
+  })
   
   // Clean up excessive whitespace
   text = text.replace(/\n{3,}/g, '\n\n')
@@ -998,7 +1070,7 @@ export async function parseMarkdown(content: string, fallbackTitle: string = 'Un
   
   // Pre-process callouts before remark parsing
   // This converts :::type ... ::: blocks to HTML divs
-  const preprocessedContent = preprocessApiBlocks(preprocessEmbeds(preprocessCallouts(mdContent)))
+  const preprocessedContent = preprocessDirectives(mdContent)
   
   // Extract title from first H1 as fallback
   const extractedTitle = extractTitle(preprocessedContent)

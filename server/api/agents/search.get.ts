@@ -206,14 +206,17 @@ function extractHeadings(content: string): string[] {
 function markdownToPlainText(content: string): string {
   return content
     .replace(/```[\s\S]*?```/g, '[code block]')
-    .replace(/`[^`]+`/g, '')
+    // Keep inline code text: identifiers are what agents search for
+    .replace(/`([^`\n]+)`/g, '$1')
     .replace(/!\[[^\]]*\]\([^)]+\)/g, '[image]')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/^#{1,6}\s+/gm, '')
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/\*([^*]+)\*/g, '$1')
-    .replace(/__([^_]+)__/g, '$1')
-    .replace(/_([^_]+)_/g, '$1')
+    // Emphasis never starts or ends next to a space, and underscores inside
+    // words (snake_case, NUXT_PUBLIC_SITE_NAME) are not emphasis
+    .replace(/\*\*(?!\s)([^*\n]+?)(?<!\s)\*\*/g, '$1')
+    .replace(/\*(?!\s)([^*\n]+?)(?<!\s)\*/g, '$1')
+    .replace(/(^|[^\p{L}\p{N}_])__(?!\s)([^_\n]+?)(?<!\s)__(?![\p{L}\p{N}_])/gu, '$1$2')
+    .replace(/(^|[^\p{L}\p{N}_])_(?!\s)([^_\n]+?)(?<!\s)_(?![\p{L}\p{N}_])/gu, '$1$2')
     .replace(/:::(info|warning|error|success|api|tip|note|danger)/g, '')
     .replace(/:::/g, '')
     .replace(/\n{3,}/g, '\n\n')
