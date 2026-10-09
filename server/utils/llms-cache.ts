@@ -17,7 +17,7 @@
  */
 
 import { readdir, stat } from 'fs/promises'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { createHash } from 'crypto'
 import { generateLlmText, getLlmStats, type LlmGeneratorOptions } from './llm-generator'
 import { logger } from './logger'
@@ -104,11 +104,16 @@ async function computeContentHash(dir: string): Promise<string> {
  * @returns The full /llms.txt string
  */
 export async function getCachedLlmsTxt(
-  contentDir: string,
+  configuredContentDir: string,
   siteName: string = 'f0',
   options: LlmGeneratorOptions = {}
 ): Promise<string> {
   const startTime = performance.now()
+  // The content hash is built from file paths, so './content' and
+  // '/app/content' must hash alike: otherwise the startup precompute (which
+  // passes an absolute path) never matches a request (which passes the
+  // configured one) and the first request regenerates everything.
+  const contentDir = resolve(configuredContentDir)
 
   // If section-scoped, use section cache
   if (options.sections && options.sections.length > 0) {

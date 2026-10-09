@@ -3,20 +3,21 @@
  * F0 - WARM-UP STATE
  * =============================================================================
  *
- * The startup check renders every page and precomputes /llms.txt before the
- * instance should take traffic. /_ready reports "warming_up" (503) until that
- * finishes, so health checks and rolling deploys only switch over to an
- * instance that answers its first requests quickly.
+ * The startup check renders the pages visitors land on first (home, top
+ * navigation targets, the first page of each section) before the instance
+ * should take traffic. /_ready reports "warming_up" (503) until that finishes,
+ * so health checks and rolling deploys only switch over to an instance that
+ * answers its first requests quickly. The rest of the site warms afterwards in
+ * the background.
  *
- * The gate is bounded: a very large site still warming after
+ * The gate is bounded: an instance still warming after
  * WARMUP_GATE_MAX_SECONDS reports ready anyway (pages then render on first
- * request), so the image's health check (about 70s of grace) and Coolify's
- * never fail a deploy just because warm-up is slow.
+ * request), so health checks never fail a deploy just because warm-up is slow.
  */
 
 import { logger } from './logger'
 
-export const WARMUP_GATE_MAX_SECONDS = 45
+export const WARMUP_GATE_MAX_SECONDS = 20
 
 let warm = false
 let gaveUpWaiting = false

@@ -26,7 +26,8 @@
  * - Standard GFM: tables, task lists, strikethrough, autolinks
  */
 
-import { unified } from 'unified'
+import { unified, type Processor } from 'unified'
+import type { VFile } from 'vfile'
 import remarkParse from 'remark-parse'
 import remarkGfm from 'remark-gfm'
 import remarkRehype from 'remark-rehype'
@@ -699,8 +700,12 @@ function rehypeResponsiveImages() {
  * Rehype plugin to extract table of contents from headings
  * Collects all H2 and H3 headings with their slugs
  */
-function rehypeExtractToc(toc: TocItem[]) {
-  return (tree: HastRoot) => {
+function rehypeExtractToc() {
+  return (tree: HastRoot, file: VFile) => {
+    // Per-document output goes on the file, so one frozen processor can be
+    // shared by every render.
+    const toc: TocItem[] = []
+    file.data.toc = toc
     visit(tree, 'element', (node: Element) => {
       if (!['h2', 'h3'].includes(node.tagName)) return
       
@@ -937,28 +942,15 @@ export function markdownToPlainText(content: string): string {
 // =============================================================================
 
 /**
- * Parse a markdown file and return HTML, TOC, and metadata
- * 
- * @param content - Raw markdown content including frontmatter
- * @returns ParsedMarkdown object with all extracted data
+ * The rendering pipeline, built once and frozen. Every plugin is stateless
+ * per document (the TOC is written to file.data), so all renders share it
+ * instead of rebuilding the plugin chain, highlighter included, per page.
  */
-export async function parseMarkdown(content: string): Promise<ParsedMarkdown> {
-  // Extract frontmatter
-  const { frontmatter, content: mdContent } = extractFrontmatter(content)
-  
-  // Pre-process callouts before remark parsing
-  // This converts :::type ... ::: blocks to HTML divs
-  const preprocessedContent = preprocessApiBlocks(preprocessEmbeds(preprocessCallouts(mdContent)))
-  
-  // Extract title from first H1 as fallback
-  const extractedTitle = extractTitle(preprocessedContent)
-  
-  // TOC will be populated by the rehype plugin
-  const toc: TocItem[] = []
-  
-  try {
-    // Build the processing pipeline
-    const processor = unified()
+let markdownProcessor: Processor<any, any, any, any, any> | null = null
+
+function getMarkdownProcessor() {
+  if (!markdownProcessor) {
+    markdownProcessor = unified()
       // Parse markdown to AST
       .use(remarkParse)
       // Add GFM support (tables, task lists, strikethrough, autolinks)
@@ -975,8 +967,8 @@ export async function parseMarkdown(content: string): Promise<ParsedMarkdown> {
       .use(rehypeSlug)
       // Responsive images (path resolution + srcset + lazy loading)
       .use(rehypeResponsiveImages)
-      // Extract TOC from headings
-      .use(() => rehypeExtractToc(toc))
+      // Extract TOC from headings (into file.data.toc)
+      .use(rehypeExtractToc)
       // Syntax highlighting for code blocks (disable auto-detect to prevent errors)
       .use(rehypeHighlight, { detect: false, ignoreMissing: true })
       // Wrap code blocks with copy button UI
@@ -990,11 +982,34 @@ export async function parseMarkdown(content: string): Promise<ParsedMarkdown> {
       .use(rehypeStripDangerous)
       // Convert to HTML string
       .use(rehypeStringify, { allowDangerousHtml: true })
-    
+      .freeze() as unknown as Processor<any, any, any, any, any>
+  }
+  return markdownProcessor
+}
+
+/**
+ * Parse a markdown file and return HTML, TOC, and metadata
+ * 
+ * @param content - Raw markdown content including frontmatter
+ * @returns ParsedMarkdown object with all extracted data
+ */
+export async function parseMarkdown(content: string): Promise<ParsedMarkdown> {
+  // Extract frontmatter
+  const { frontmatter, content: mdContent } = extractFrontmatter(content)
+  
+  // Pre-process callouts before remark parsing
+  // This converts :::type ... ::: blocks to HTML divs
+  const preprocessedContent = preprocessApiBlocks(preprocessEmbeds(preprocessCallouts(mdContent)))
+  
+  // Extract title from first H1 as fallback
+  const extractedTitle = extractTitle(preprocessedContent)
+  
+  try {
     // Process the markdown, then re-parse the HTML the way the browser will
     // and sanitize again until stable (defeats mutation XSS)
-    const result = await processor.process(preprocessedContent)
+    const result = await getMarkdownProcessor().process(preprocessedContent)
     const html = stabilizeHtml(String(result))
+    const toc = (result.data.toc as TocItem[] | undefined) ?? []
     
     // Generate plain text for LLM
     const plainText = markdownToPlainText(content)

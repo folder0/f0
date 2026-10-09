@@ -101,7 +101,7 @@ Leave **Enable Healthcheck** on. If you set values in the dashboard, mirror the 
 | **Retries** | `6` | |
 | **Start Period** | `10` (use `30` above ~500 pages) | |
 
-`/_ready` answers 200 once the content directory is readable and the startup warm-up has rendered every page, so traffic only moves to a new container that answers quickly. On very large sites it reports ready after 45 seconds even if warm-up is still running. `/_health` only says the process is alive. Both work without a login in private mode.
+`/_ready` answers 200 once the content directory is readable and the pages visitors land on first (home, top navigation targets, the first page of each section) are rendered, so traffic only moves to a new container that answers quickly. The rest of the site warms in the background, and readiness never waits more than 20 seconds. `/_health` only says the process is alive. Both work without a login in private mode.
 
 ---
 

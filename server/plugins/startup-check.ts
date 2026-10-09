@@ -30,6 +30,7 @@ import { prewarmCache } from '../utils/cache'
 import { getCachedLlmsTxt } from '../utils/llms-cache'
 import { isMarkdownFile } from '../utils/markdown'
 import { markWarm } from '../utils/readiness'
+import { buildNavigation, resolveContentPath, type SidebarItem } from '../utils/navigation'
 import { f0Config } from '../utils/f0-config'
 
 /**
@@ -62,6 +63,38 @@ async function scanContentFiles(dir: string): Promise<string[]> {
 
   await walk(dir)
   return files
+}
+
+/**
+ * Pages most visitors land on first: home, each internal top-navigation
+ * target, and the first page of each section's sidebar.
+ */
+async function criticalPages(contentDir: string): Promise<string[]> {
+  const files = new Set<string>()
+  const add = async (urlPath: string) => {
+    const slug = urlPath.replace(/^\/+|\/+$/g, '') || 'home'
+    const filePath = await resolveContentPath(contentDir, slug)
+    if (filePath) files.add(filePath)
+  }
+
+  await add('/')
+  const nav = await buildNavigation(contentDir)
+  for (const item of nav.topNav) {
+    if (item.isExternal) continue
+    await add(item.path)
+    const first = firstPage(nav.sidebar.get(item.path) ?? [])
+    if (first) await add(first)
+  }
+  return [...files]
+}
+
+function firstPage(items: SidebarItem[]): string | null {
+  for (const item of items) {
+    if (item.type === 'file') return item.path
+    const nested = firstPage(item.children ?? [])
+    if (nested) return nested
+  }
+  return null
 }
 
 export default defineNitroPlugin(async () => {
@@ -143,24 +176,41 @@ export default defineNitroPlugin(async () => {
   }
 
   // =========================================================================
-  // CHECK 4: Pre-warm content cache
+  // CHECK 4: Warm the pages visitors land on (gates /_ready)
   // =========================================================================
 
-  // /_ready answers 503 until this section finishes. Warm-up failures are not
-  // fatal (pages render on demand), so the instance becomes ready either way.
+  // /_ready answers 503 until the critical pages are rendered: home, each top
+  // navigation target and the first page of each section. Everything else
+  // warms in the background, so readiness does not grow with site size.
+  // Failures are not fatal (pages render on demand).
+  let criticalCount = 0
+  try {
+    const critical = await criticalPages(contentDir)
+    const warmed = await prewarmCache(critical)
+    criticalCount = warmed.cached
+    logger.info('Critical pages warmed', { pages: warmed.cached, errors: warmed.errors })
+  }
+  catch (error) {
+    logger.warn('Critical warm-up failed; pages will render on first request', {
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+  finally {
+    markWarm()
+  }
+
+  // =========================================================================
+  // CHECK 5: Warm the rest and pre-compute /llms.txt (background)
+  // =========================================================================
+
   let cached = 0
   let errors = 0
   try {
-    logger.info('Pre-warming content cache...')
     const contentFiles = await scanContentFiles(contentDir)
     const warmed = await prewarmCache(contentFiles)
     cached = warmed.cached
     errors = warmed.errors
     logger.info('Content cache warmed', { pages: cached, errors })
-
-    // =======================================================================
-    // CHECK 5: Pre-compute /llms.txt
-    // =======================================================================
 
     try {
       const siteName = config.public?.siteName || 'f0'
@@ -173,12 +223,9 @@ export default defineNitroPlugin(async () => {
     }
   }
   catch (error) {
-    logger.warn('Warm-up failed; pages will render on first request', {
+    logger.warn('Background warm-up failed; pages will render on first request', {
       error: error instanceof Error ? error.message : String(error),
     })
-  }
-  finally {
-    markWarm()
   }
 
   // =========================================================================
@@ -188,6 +235,7 @@ export default defineNitroPlugin(async () => {
   const duration = Math.round(performance.now() - startTime)
   logger.info('f0 startup validation complete', {
     duration,
+    criticalPages: criticalCount,
     pages: cached,
     errors,
     authMode,
