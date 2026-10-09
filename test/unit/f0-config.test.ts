@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { resolveF0Config } from '../../server/utils/f0-config'
 
@@ -13,7 +15,13 @@ describe('resolveF0Config', () => {
     expect(config.contentDir).toBe('./content')
     expect(config.privateDir).toBe('./private')
     expect(config.awsRegion).toBe('us-east-1')
+    expect(config.imageCacheDir).toBe(join(tmpdir(), 'f0-image-cache'))
     expect(config.problems).toEqual([])
+  })
+
+  it('takes the image cache directory from either name', () => {
+    expect(prod({ F0_IMAGE_CACHE_DIR: '/cache/a' }).imageCacheDir).toBe('/cache/a')
+    expect(prod({ NUXT_IMAGE_CACHE_DIR: '/cache/b', F0_IMAGE_CACHE_DIR: '/cache/a' }).imageCacheDir).toBe('/cache/b')
   })
 
   it('accepts the documented short names at runtime', () => {

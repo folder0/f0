@@ -20,6 +20,9 @@
  * in Nuxt's public runtime config, which already reads NUXT_PUBLIC_* at runtime.
  */
 
+import { tmpdir } from 'os'
+import { join } from 'path'
+
 export type AuthMode = 'public' | 'private'
 
 export interface F0Config {
@@ -36,6 +39,8 @@ export interface F0Config {
   privateDir: string
   f0Mode: 'docs' | 'blog'
   githubWebhookSecret: string
+  /** Where resized image variants are written (never inside contentDir). */
+  imageCacheDir: string
   /** Misconfigurations that must stop the site from serving (fail closed). */
   problems: string[]
   /** Settings that work but deserve attention. */
@@ -121,6 +126,7 @@ export function resolveF0Config(env: Env = process.env): F0Config {
     privateDir: read(env, 'NUXT_PRIVATE_DIR', 'PRIVATE_DIR') || './private',
     f0Mode,
     githubWebhookSecret: read(env, 'NUXT_GITHUB_WEBHOOK_SECRET', 'GITHUB_WEBHOOK_SECRET'),
+    imageCacheDir: read(env, 'NUXT_IMAGE_CACHE_DIR', 'F0_IMAGE_CACHE_DIR') || join(tmpdir(), 'f0-image-cache'),
     problems,
     warnings,
   }

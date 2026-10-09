@@ -9,7 +9,8 @@
  * CONSTRAINT COMPLIANCE:
  * - C-MEDIA-PROGRESSIVE-012: Original files always served if processing fails.
  *   Never block a request on image optimization.
- * - C-PERF-CACHE-MTIME-010: Disk cache invalidated by source file mtime comparison.
+ * - C-PERF-CACHE-MTIME-010: The variant key includes the source's mtime and size,
+ *   so a changed source gets new variants.
  * 
  * API SURFACE:
  *   GET /api/content/assets/images/photo.png              → Original
@@ -18,12 +19,11 @@
  *   GET /api/content/assets/images/photo.png?w=400&q=80   → Resized, quality 80
  * 
  * DISK CACHE:
- *   content/.cache/images/photo-w800-q80.webp
- *   Invalidation: source mtime > cache mtime → regenerate
+ *   <NUXT_IMAGE_CACHE_DIR>/photo-<hash of path, mtime, size>-w800.webp
+ *   (default: the OS temp dir, never inside the content directory)
  */
 
-import { readFile, writeFile, mkdir, stat } from 'fs/promises'
-import { existsSync } from 'fs'
+import { readFile, writeFile, mkdir, rename, stat, unlink } from 'fs/promises'
 import { createHash } from 'crypto'
 import { join, dirname, basename, extname } from 'path'
 import { logger } from './logger'
@@ -106,9 +106,15 @@ async function getSharp(): Promise<typeof import('sharp') | null> {
  * in different folders (guides/shot.png, blog/shot.png) from colliding in the
  * flat cache directory and serving each other's pixels.
  */
-function getCacheKey(sourcePath: string, options: ImageOptions): string {
+function getCacheKey(sourcePath: string, source: { mtimeMs: number, size: number }, options: ImageOptions): string {
   const name = basename(sourcePath, extname(sourcePath))
-  const pathHash = createHash('sha1').update(sourcePath).digest('hex').slice(0, 12)
+  // The source's mtime and size are part of the key, so replacing an image
+  // (even with an older mtime, as rsync -t or cp -p do) never serves the old
+  // pixels.
+  const pathHash = createHash('sha1')
+    .update(`${sourcePath}\0${source.mtimeMs}\0${source.size}`)
+    .digest('hex')
+    .slice(0, 12)
   const parts = [name, pathHash]
 
   if (options.width) parts.push(`w${options.width}`)
@@ -254,36 +260,53 @@ export function parseImageOptions(query: Record<string, unknown>): ImageOptions 
  * Falls back to original on any failure (constraint C-MEDIA-PROGRESSIVE-012).
  * 
  * @param sourcePath - Absolute path to the original image
- * @param cacheDir - Directory for disk cache (e.g., content/.cache/images/)
+ * @param cacheDir - Directory for disk cache (f0Config().imageCacheDir)
  * @param options - Processing options (width, format, quality)
  * @returns Processed image buffer and mime type
  */
+// Used only when the cache directory cannot be written (read-only
+// filesystem, wrong permissions), so variants are not re-encoded per request.
+const MEMORY_CACHE_MAX_BYTES = 32 * 1024 * 1024
+const memoryCache = new Map<string, Buffer>()
+let memoryCacheBytes = 0
+let diskWriteWarned = false
+
+function rememberInMemory(key: string, buffer: Buffer): void {
+  if (buffer.length > MEMORY_CACHE_MAX_BYTES / 4) return
+  const existing = memoryCache.get(key)
+  if (existing) {
+    memoryCacheBytes -= existing.length
+    memoryCache.delete(key)
+  }
+  memoryCache.set(key, buffer)
+  memoryCacheBytes += buffer.length
+  while (memoryCacheBytes > MEMORY_CACHE_MAX_BYTES) {
+    const oldest = memoryCache.keys().next().value
+    if (oldest === undefined) break
+    memoryCacheBytes -= memoryCache.get(oldest)!.length
+    memoryCache.delete(oldest)
+  }
+}
+
 export async function getProcessedImage(
   sourcePath: string,
   cacheDir: string,
   options: ImageOptions
 ): Promise<ProcessedImage | null> {
-  const cacheKey = getCacheKey(sourcePath, options)
+  const sourceStats = await stat(sourcePath)
+  const cacheKey = getCacheKey(sourcePath, sourceStats, options)
   const cachePath = join(cacheDir, cacheKey)
+  const mimeType = getMimeType(extname(cacheKey).toLowerCase().replace('.', ''))
 
-  // Check disk cache
+  // Check the memory fallback, then the disk cache
+  const remembered = memoryCache.get(cacheKey)
+  if (remembered) {
+    memoryCache.delete(cacheKey)
+    memoryCache.set(cacheKey, remembered)
+    return { buffer: remembered, mimeType }
+  }
   try {
-    if (existsSync(cachePath)) {
-      const [sourceStats, cacheStats] = await Promise.all([
-        stat(sourcePath),
-        stat(cachePath),
-      ])
-
-      // Cache is valid if it's newer than the source
-      if (cacheStats.mtimeMs >= sourceStats.mtimeMs) {
-        const buffer = await readFile(cachePath)
-        const ext = extname(cachePath).toLowerCase().replace('.', '')
-        return {
-          buffer,
-          mimeType: getMimeType(ext),
-        }
-      }
-    }
+    return { buffer: await readFile(cachePath), mimeType }
   } catch {
     // Cache miss or read error — continue to process
   }
@@ -294,15 +317,26 @@ export async function getProcessedImage(
 
   if (!result) return null
 
-  // Write to disk cache (async, don't block response)
   try {
+    // Write then rename, so a concurrent request never reads a partial file
     await mkdir(dirname(cachePath), { recursive: true })
-    await writeFile(cachePath, result.buffer)
+    const tempPath = `${cachePath}.${process.pid}.${Date.now()}.tmp`
+    try {
+      await writeFile(tempPath, result.buffer)
+      await rename(tempPath, cachePath)
+    } catch (error) {
+      await unlink(tempPath).catch(() => {})
+      throw error
+    }
   } catch (error) {
-    logger.warn('Failed to write image cache', {
-      path: cachePath,
-      error: error instanceof Error ? error.message : String(error),
-    })
+    if (!diskWriteWarned) {
+      diskWriteWarned = true
+      logger.warn('Image cache directory is not writable; keeping variants in memory (set NUXT_IMAGE_CACHE_DIR)', {
+        path: cacheDir,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+    rememberInMemory(cacheKey, result.buffer)
   }
 
   return result

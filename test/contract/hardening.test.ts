@@ -4,7 +4,8 @@
  * delivery dedupe.
  */
 import { createHmac } from 'node:crypto'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { request } from 'node:http'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -14,6 +15,7 @@ const WEBHOOK_SECRET = 'contract-webhook-secret'
 
 let site: Site
 let server: RunningServer
+const imageCacheDir = mkdtempSync(join(tmpdir(), 'f0-image-cache-'))
 
 beforeAll(async () => {
   site = await prepareSite()
@@ -27,13 +29,14 @@ beforeAll(async () => {
   server = await startServer({
     site,
     authMode: 'public',
-    env: { NUXT_PUBLIC_SITE_URL: '', GITHUB_WEBHOOK_SECRET: WEBHOOK_SECRET },
+    env: { NUXT_PUBLIC_SITE_URL: '', GITHUB_WEBHOOK_SECRET: WEBHOOK_SECRET, NUXT_IMAGE_CACHE_DIR: imageCacheDir },
   })
 })
 
 afterAll(async () => {
   await server?.stop()
   site?.cleanup()
+  rmSync(imageCacheDir, { recursive: true, force: true })
 })
 
 /** GET with an explicit Host header (fetch does not allow overriding it). */
@@ -87,6 +90,28 @@ describe('image variants', () => {
     const statsB = await sharp(Buffer.from(await b.arrayBuffer())).stats()
     // pixel.png is blue (#2547b8), other/pixel.png is red: dominant colours differ
     expect(statsA.dominant).not.toEqual(statsB.dominant)
+  })
+
+  it('writes variants to the image cache directory, never into content', async () => {
+    expect((await get(`${server.url}/api/content/assets/images/pixel.png?w=320&f=webp`)).status).toBe(200)
+    expect(readdirSync(imageCacheDir).some(name => name.startsWith('pixel-') && name.endsWith('-w320.webp'))).toBe(true)
+    expect(existsSync(join(site.contentDir, '.cache'))).toBe(false)
+  })
+
+  it('serves new pixels when a source is replaced with an older modification time', async () => {
+    const { default: sharp } = await import('sharp')
+    const source = join(site.contentDir, 'assets/other/swap.png')
+    const dominant = async () => (await sharp(Buffer.from(await (await get(`${server.url}/api/content/assets/other/swap.png?w=96`)).arrayBuffer())).stats()).dominant
+
+    await sharp({ create: { width: 200, height: 200, channels: 3, background: '#00ff00' } }).png().toFile(source)
+    const before = await dominant()
+    const { mtime } = statSync(source)
+
+    await sharp({ create: { width: 200, height: 200, channels: 3, background: '#ff00ff' } }).png().toFile(source)
+    const older = new Date(mtime.getTime() - 60_000)
+    utimesSync(source, older, older)
+
+    expect(await dominant()).not.toEqual(before)
   })
 })
 

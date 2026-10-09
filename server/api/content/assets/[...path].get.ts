@@ -57,8 +57,8 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // Dotfiles and dot-folders are never assets (the image cache lives in
-  // content/.cache, editors and OSes leave .DS_Store, .git, .env ...).
+  // Dotfiles and dot-folders are never assets (older versions kept the image
+  // cache in content/.cache; editors and OSes leave .DS_Store, .git, .env ...).
   if (assetPath.split('/').some(segment => segment.startsWith('.'))) {
     throw createError({
       statusCode: 404,
@@ -96,8 +96,7 @@ export default defineEventHandler(async (event) => {
     
     if (imageOptions && isProcessableImage(filePath)) {
       // Attempt image processing
-      const cacheDir = join(contentDir, '.cache', 'images')
-      const processed = await getProcessedImage(filePath, cacheDir, imageOptions)
+      const processed = await getProcessedImage(filePath, settings.imageCacheDir, imageOptions)
       
       if (processed) {
         setHeader(event, 'Content-Type', processed.mimeType)

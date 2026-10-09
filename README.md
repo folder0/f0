@@ -199,7 +199,7 @@ Images are automatically optimized on demand via query parameters:
 /api/content/assets/images/photo.png?w=400&q=80   → 400px, quality 80
 ```
 
-The Markdown pipeline automatically wraps content images in responsive `<picture>` elements with WebP srcset at 400/800/1200w and lazy loading. Processed variants are cached to disk. If sharp is unavailable, originals are served.
+The Markdown pipeline automatically wraps content images in responsive `<picture>` elements with WebP srcset at 400/800/1200w and lazy loading. Processed variants are cached on disk in `NUXT_IMAGE_CACHE_DIR` (default: the system temp directory, never inside `content/`). If sharp is unavailable, originals are served.
 
 Image paths in Markdown (`./assets/images/x.png`) preview correctly in GitHub and VS Code.
 
@@ -306,7 +306,7 @@ On boot, f0 validates the deployment environment before accepting traffic:
 - **Content cache** — mtime-based invalidation, ~1ms cached responses
 - **Navigation cache** — mtime + directory structure hash
 - **`/llms.txt` cache** — content-hash invalidation, ~3ms cached
-- **Image cache** — disk-based, mtime invalidation against source
+- **Image cache** — disk-based, keyed by source path, mtime and size; in memory if the directory is not writable
 - **Structured JSON logs** — all server output, zero `console.log`
 
 ### Content Validation CLI
@@ -388,6 +388,7 @@ A private site without a JWT secret refuses to start rather than run unprotected
 | `NUXT_AWS_SECRET_ACCESS_KEY` (`AWS_SECRET_ACCESS_KEY`) | — | AWS credentials for email |
 | `NUXT_EMAIL_FROM` (`EMAIL_FROM`) | — | Sender email address |
 | `NUXT_GITHUB_WEBHOOK_SECRET` (`GITHUB_WEBHOOK_SECRET`) | — | Secret for webhook signature verification |
+| `NUXT_IMAGE_CACHE_DIR` (`F0_IMAGE_CACHE_DIR`) | system temp dir | Where resized image variants are stored. Point it at a volume to keep variants across deploys |
 
 ---
 
