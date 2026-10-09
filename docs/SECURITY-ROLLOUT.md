@@ -50,6 +50,14 @@ npm run build && npm run test:contract
 
 **If `git ls-files '.env*'` lists a committed `.env`, stop before deploying.** Docker builds no longer read it (see the `.env` row in section 4), so the site would come up with defaults, which means **public**. Move its settings into the site's environment first.
 
+Before deploying, see exactly what this release changes for the site's content (drafts that leave listings, folder configs that start applying, URLs that move in the sitemap, titles that change, brand colors that apply):
+
+```bash
+npm run census -- ./content
+```
+
+It is read-only and uses the server's own rules. Review each section; section 4 says how to keep the old behavior where an opt-out exists.
+
 Expect conflicts where the fork changed the same files (for example `server/middleware/auth.ts`, `server/utils/markdown.ts`, `assets/css/main.css`). Keep the fork's intentional changes and this release's security changes. If a fork has engine improvements that every site would want, send them upstream to f0.
 
 ## 4. Behaviour that changes with this release
