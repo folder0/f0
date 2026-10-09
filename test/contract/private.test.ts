@@ -72,6 +72,29 @@ describe('private mode baseline', () => {
     },
   )
 
+  it.each(['/guides/intro', '/', '/api/content/guides/intro', '/llms.txt'])(
+    'keeps the anonymous response for %s (redirect or 401) out of shared caches',
+    async (path) => {
+      const response = await get(server.url + path)
+      expect([302, 401]).toContain(response.status)
+      expect(response.headers.get('cache-control')).toBe('private, no-store')
+      expect(response.headers.get('vary')).toMatch(/Cookie/)
+    },
+  )
+
+  it('keeps an expired-session redirect out of shared caches', async () => {
+    const response = await get(`${server.url}/guides/intro`, { headers: { cookie: 'f0_token=garbage' } })
+    expect(response.status).toBe(302)
+    expect(response.headers.get('cache-control')).toBe('private, no-store')
+  })
+
+  it('does not repeat Vary values', async () => {
+    const token = mintToken('reader@example.com')
+    const response = await get(`${server.url}/llms.txt`, { headers: { authorization: `Bearer ${token}` } })
+    const vary = (response.headers.get('vary') ?? '').split(',').map(v => v.trim().toLowerCase())
+    expect(vary.filter(v => v === 'cookie')).toHaveLength(1)
+  })
+
   it('rejects a token signed with the wrong secret', async () => {
     const response = await get(`${server.url}/api/content/guides/intro`, { headers: { authorization: 'Bearer not.a.token' } })
     expect(response.status).toBe(401)

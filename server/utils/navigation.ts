@@ -39,6 +39,7 @@ import { readdir, readFile, stat } from 'fs/promises'
 import { join, basename, extname, relative } from 'path'
 import { parseMarkdown, isMarkdownFile, isJsonSpecFile } from './markdown'
 import { logger } from './logger'
+import { isConfinedEntry, isConfinedPath } from './paths'
 import yaml from 'yaml'
 
 // =============================================================================
@@ -388,7 +389,7 @@ async function scanDirectory(
             children,
           })
         }
-      } else if (isMarkdownFile(entry.name)) {
+      } else if (isMarkdownFile(entry.name) && await isConfinedEntry(dirPath, entry, contentDir)) {
         // Parse markdown file for metadata
         const { title, order: frontmatterOrder } = await getTitleFromMarkdown(entryPath)
         const filenameOrder = extractOrderFromFilename(entry.name)
@@ -399,7 +400,7 @@ async function scanDirectory(
           type: 'file',
           order: frontmatterOrder ?? filenameOrder ?? 999,
         })
-      } else if (isJsonSpecFile(entry.name)) {
+      } else if (isJsonSpecFile(entry.name) && await isConfinedEntry(dirPath, entry, contentDir)) {
         // Parse JSON spec for metadata
         logger.debug('Found JSON spec', { name: entry.name, path: entryPath })
         const { title } = await getTitleFromJsonSpec(entryPath)
@@ -577,6 +578,8 @@ export async function getContentMeta(
     try {
       const stats = await stat(filePath)
       if (!stats.isFile()) continue
+      // Symlinks must not lead outside the content directory
+      if (!(await isConfinedPath(filePath, contentDir))) continue
       
       const ext = extname(filePath).toLowerCase()
       let title: string

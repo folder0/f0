@@ -2,6 +2,8 @@
  * Private-mode sessions and admin access: explicit admins, revocable logout,
  * immediate effect of allowlist removals, SVG handling, login redirects.
  */
+import { statSync, utimesSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { get, mintToken, prepareSite, startServer, type RunningServer, type Site } from './harness'
 
@@ -90,6 +92,57 @@ describe('allowlist changes take effect immediately', () => {
     await new Promise(r => setTimeout(r, 15))
 
     expect((await get(`${server.url}/api/content/guides/intro`, { headers: bearer(token) })).status).toBe(401)
+  })
+})
+
+describe('allowlist reloads', () => {
+  const intro = (email: string) => get(`${server.url}/api/content/guides/intro`, { headers: bearer(mintToken(email)) })
+
+  it('picks up a replacement that keeps an older modification time (cp -p, rsync -t)', async () => {
+    expect((await intro('reader@example.com')).status).toBe(200)
+    const allowlistPath = join(site.privateDir, 'allowlist.json')
+    const before = statSync(allowlistPath)
+
+    site.writeAllowlist({ emails: ['admin@example.com'], admins: ['admin@example.com'] })
+    const older = new Date(before.mtimeMs - 60_000)
+    utimesSync(allowlistPath, older, older)
+
+    expect((await intro('reader@example.com')).status).toBe(401)
+  })
+
+  it('keeps the last good allowlist when the file becomes malformed', async () => {
+    expect((await intro('reader@example.com')).status).toBe(200)
+
+    writeFileSync(join(site.privateDir, 'allowlist.json'), '{ "emails": [ "reader@example.com", ')
+    const response = await intro('reader@example.com')
+    expect(response.status).toBe(200)
+    expect(response.headers.get('set-cookie')).toBeNull()
+    expect((await intro('stranger@example.com')).status).toBe(401)
+    expect(server.output()).toMatch(/keeping the last good copy/)
+  })
+
+  it('keeps the last good allowlist when a list has the wrong shape', async () => {
+    writeFileSync(join(site.privateDir, 'allowlist.json'), JSON.stringify({ emails: 'reader@example.com' }))
+    expect((await intro('reader@example.com')).status).toBe(200)
+  })
+
+  it('fails closed without ending sessions when no allowlist was ever readable', async () => {
+    const broken = await prepareSite()
+    writeFileSync(join(broken.privateDir, 'allowlist.json'), 'not json')
+    const brokenServer = await startServer({ site: broken, authMode: 'private' })
+    try {
+      const request = () => get(`${brokenServer.url}/api/content/guides/intro`, { headers: { cookie: `f0_token=${mintToken('reader@example.com')}` } })
+      const response = await request()
+      expect(response.status).toBe(503)
+      expect(response.headers.get('set-cookie')).toBeNull()
+
+      broken.writeAllowlist(DEFAULT_ALLOWLIST)
+      expect((await request()).status).toBe(200)
+    }
+    finally {
+      await brokenServer.stop()
+      broken.cleanup()
+    }
   })
 })
 

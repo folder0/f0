@@ -120,6 +120,12 @@ Edit `private/allowlist.json`:
 }
 ```
 
+Changes apply on the next request, no restart needed. Removing someone ends
+their existing sessions too. If the file goes missing or stops being valid
+JSON, the last good version stays in effect and an error is logged, so a bad
+edit does not log everyone out. To lock everyone out, save the file with empty
+lists rather than deleting it.
+
 ### 3. Generate JWT Secret
 
 ```bash

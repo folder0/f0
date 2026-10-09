@@ -19,6 +19,7 @@ import { join, resolve, extname } from 'path'
 import { isMarkdownFile, isJsonSpecFile } from '../utils/markdown'
 import { resolveLayoutForPath } from '../utils/config'
 import { logger } from '../utils/logger'
+import { isConfinedEntry } from '../utils/paths'
 import { createHash } from 'crypto'
 
 // =============================================================================
@@ -66,7 +67,7 @@ async function collectPages(
         const childUrl = urlPath ? `${urlPath}/${entry.name}` : `/${entry.name}`
         const children = await collectPages(fullPath, contentDir, childUrl)
         entries.push(...children)
-      } else if (isMarkdownFile(entry.name) || isJsonSpecFile(entry.name)) {
+      } else if ((isMarkdownFile(entry.name) || isJsonSpecFile(entry.name)) && await isConfinedEntry(dir, entry, contentDir)) {
         // Build URL path
         const slug = entry.name
           .replace(/^\d{4}-\d{2}-\d{2}-/, '')  // Strip date prefix

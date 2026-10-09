@@ -25,6 +25,7 @@ import { existsSync, readFileSync } from 'fs'
 import { readdir } from 'fs/promises'
 import { resolve, join } from 'path'
 import { logger } from '../utils/logger'
+import { isConfinedEntry } from '../utils/paths'
 import { prewarmCache } from '../utils/cache'
 import { getCachedLlmsTxt } from '../utils/llms-cache'
 import { isMarkdownFile } from '../utils/markdown'
@@ -48,7 +49,7 @@ async function scanContentFiles(dir: string): Promise<string[]> {
 
         if (entry.isDirectory()) {
           await walk(fullPath)
-        } else if (isMarkdownFile(entry.name)) {
+        } else if (isMarkdownFile(entry.name) && await isConfinedEntry(currentDir, entry, dir)) {
           files.push(fullPath)
         }
       }

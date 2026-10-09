@@ -32,6 +32,7 @@
 import { readdir, readFile, stat } from 'fs/promises'
 import { join, resolve } from 'path'
 import { logger } from '../utils/logger'
+import { isConfinedEntry } from '../utils/paths'
 import { markdownToPlainText, isMarkdownFile, extractFrontmatterSafe } from '../utils/markdown'
 
 // =============================================================================
@@ -90,7 +91,7 @@ async function scanSections(contentDir: string): Promise<Map<string, SectionInfo
 
           totalPages += childStats.pages
           totalTokens += childStats.tokens
-        } else if (isMarkdownFile(entry.name)) {
+        } else if (isMarkdownFile(entry.name) && await isConfinedEntry(dir, entry, contentDir)) {
           totalPages++
           try {
             const content = await readFile(fullPath, 'utf-8')

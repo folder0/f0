@@ -33,8 +33,9 @@
 
 import { verifyToken, type JwtPayload } from '../utils/jwt'
 import { auditLog, getClientIp } from '../utils/audit'
-import { isEmailAllowed } from '../utils/allowlist'
+import { checkEmailAccess } from '../utils/allowlist'
 import { isSessionRevoked } from '../utils/sessions'
+import { markPrivateResponse } from '../utils/http-cache'
 import { logger } from '../utils/logger'
 
 // =============================================================================
@@ -99,6 +100,13 @@ export default defineEventHandler(async (event) => {
   // ---------------------------------------------------------------------------
   // PRIVATE MODE: Check authentication
   // ---------------------------------------------------------------------------
+
+  // Nothing in private mode may be stored by a shared cache, including the
+  // login redirects and 401s below, which never reach the response hook.
+  // /_nuxt/* are fingerprinted build assets with no site content.
+  if (!path.startsWith('/_nuxt/')) {
+    markPrivateResponse(event)
+  }
   
   // Check if route is exempt from auth
   const isPublicRoute = PUBLIC_ROUTES.some(route => 
@@ -190,9 +198,19 @@ export default defineEventHandler(async (event) => {
   // the allowlist lose access immediately, not when the 72h token expires.
   const { email, jti } = result.payload
   const revoked = await isSessionRevoked(jti)
-  const stillAllowed = !revoked && await isEmailAllowed(email, config.privateDir)
+  const access = revoked ? 'denied' : await checkEmailAccess(email, config.privateDir)
 
-  if (revoked || !stillAllowed) {
+  // Allowlist unreadable and never loaded: fail closed, but keep the cookie so
+  // sessions resume once the file is fixed.
+  if (access === 'unavailable') {
+    throw createError({
+      statusCode: 503,
+      statusMessage: 'Service Unavailable',
+      data: { message: 'Access control is temporarily unavailable' },
+    })
+  }
+
+  if (revoked || access !== 'allowed') {
     deleteCookie(event, 'f0_token', { path: '/' })
     await auditLog(event, 'token_invalid', email, false, revoked ? 'revoked' : 'not_allowlisted', {
       path,

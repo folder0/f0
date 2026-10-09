@@ -20,25 +20,48 @@
  * 
  * SECURITY:
  * - Only serves files from content/assets directory
- * - Blocks path traversal attempts
- * - Returns appropriate MIME types
+ * - Blocks path traversal attempts and symlinks leaving the content directory
+ * - Dotfiles and dot-folders (.cache, .DS_Store, .git ...) are never served
+ * - Returns appropriate MIME types; types a browser renders as a document
+ *   (HTML, SVG, any XML) are sandboxed so they cannot run script on this origin
  */
 
 import { readFile, stat } from 'fs/promises'
-import { resolve, join, extname, normalize } from 'path'
+import { resolve, join, extname, normalize, sep } from 'path'
 import { lookup } from 'mrmime'
 import { isProcessableImage, parseImageOptions, getProcessedImage } from '../../../utils/image-processor'
 import { logger } from '../../../utils/logger'
+import { isConfinedPath } from '../../../utils/paths'
+
+/** CSP for documents served from the content folder: no script, no same-origin access. */
+const DOCUMENT_SANDBOX_CSP = "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'"
+
+/** Types a browser renders as an active document when opened directly. */
+function isActiveDocumentType(mimeType: string): boolean {
+  return mimeType === 'text/html'
+    || mimeType === 'text/xml'
+    || mimeType === 'application/xml'
+    || mimeType.endsWith('+xml') // image/svg+xml, application/xhtml+xml, mathml, rss ...
+}
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
   const assetPath = event.context.params?.path || ''
   
   // Security: Block path traversal
-  if (assetPath.includes('..') || assetPath.includes('//')) {
+  if (assetPath.includes('..') || assetPath.includes('//') || assetPath.includes('\\') || assetPath.includes('\0')) {
     throw createError({
       statusCode: 403,
       statusMessage: 'Forbidden',
+    })
+  }
+
+  // Dotfiles and dot-folders are never assets (the image cache lives in
+  // content/.cache, editors and OSes leave .DS_Store, .git, .env ...).
+  if (assetPath.split('/').some(segment => segment.startsWith('.'))) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: 'Not Found',
     })
   }
   
@@ -48,7 +71,7 @@ export default defineEventHandler(async (event) => {
   const filePath = normalize(join(assetsDir, assetPath))
   
   // Security: Ensure the resolved path is within assets directory
-  if (!filePath.startsWith(assetsDir)) {
+  if (!filePath.startsWith(assetsDir + sep)) {
     throw createError({
       statusCode: 403,
       statusMessage: 'Forbidden',
@@ -59,7 +82,7 @@ export default defineEventHandler(async (event) => {
     // Check if file exists
     const stats = await stat(filePath)
     
-    if (!stats.isFile()) {
+    if (!stats.isFile() || !(await isConfinedPath(filePath, contentDir))) {
       throw createError({
         statusCode: 404,
         statusMessage: 'Not Found',
@@ -100,9 +123,9 @@ export default defineEventHandler(async (event) => {
     setHeader(event, 'Content-Type', mimeType)
     setHeader(event, 'Content-Length', content.length)
     setHeader(event, 'X-Content-Type-Options', 'nosniff')
-    if (ext === '.svg') {
-      // An SVG opened directly is a document that can run script. Sandbox it.
-      setHeader(event, 'Content-Security-Policy', "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'")
+    if (isActiveDocumentType(mimeType)) {
+      // Opened directly, HTML/SVG/XML is a document that can run script. Sandbox it.
+      setHeader(event, 'Content-Security-Policy', DOCUMENT_SANDBOX_CSP)
     }
     setHeader(event, 'Cache-Control', 'public, max-age=86400') // 24 hours for originals
     

@@ -73,3 +73,41 @@ export async function resolveContentSubdir(contentDir: string, raw: unknown): Pr
   const isDirectory = await stat(real).then(s => s.isDirectory(), () => false)
   return { ok: true, rel, abs: real, exists: isDirectory }
 }
+
+// =============================================================================
+// SYMLINK CONFINEMENT FOR CONTENT FILES
+// =============================================================================
+
+/** True when realPath is the content root or inside it. */
+async function insideContentRoot(realPath: string, contentDir: string): Promise<boolean> {
+  const root = await realpath(resolve(contentDir))
+  return realPath === root || realPath.startsWith(root + sep)
+}
+
+/**
+ * True when a file path may be read as content: its real path (symlinks
+ * followed) stays inside the content directory. A symlink such as
+ * content/guides/leak.md -> ../../secret.md or -> /app/private/allowlist.json
+ * is refused. Missing files return false.
+ */
+export async function isConfinedPath(filePath: string, contentDir: string): Promise<boolean> {
+  try {
+    return await insideContentRoot(await realpath(filePath), contentDir)
+  }
+  catch {
+    return false
+  }
+}
+
+/**
+ * For directory walkers: regular entries are always allowed; symbolic links
+ * only when their target stays inside the content directory.
+ */
+export async function isConfinedEntry(
+  dir: string,
+  entry: { name: string, isSymbolicLink(): boolean },
+  contentDir: string,
+): Promise<boolean> {
+  if (!entry.isSymbolicLink()) return true
+  return isConfinedPath(join(dir, entry.name), contentDir)
+}

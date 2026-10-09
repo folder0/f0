@@ -9,7 +9,8 @@
  * assets, sitemap and feeds, which is right for public sites but leaks gated
  * content when the site is private.
  *
- * This hook runs after the handler, so it overrides those headers:
+ * This hook runs after the handler, so it overrides those headers (the auth
+ * middleware sets the same headers earlier, for redirects and 401s):
  *   Cache-Control: private, no-store
  *   Vary: Cookie, Authorization
  *
@@ -18,6 +19,7 @@
  */
 
 import { logger } from '../utils/logger'
+import { markPrivateResponse } from '../utils/http-cache'
 
 export default defineNitroPlugin((nitroApp) => {
   nitroApp.hooks.hook('beforeResponse', (event) => {
@@ -29,8 +31,7 @@ export default defineNitroPlugin((nitroApp) => {
     if (path.startsWith('/_nuxt/')) return
 
     try {
-      setResponseHeader(event, 'Cache-Control', 'private, no-store')
-      appendResponseHeader(event, 'Vary', 'Cookie, Authorization')
+      markPrivateResponse(event)
     }
     catch (error) {
       logger.warn('Could not set private cache headers', { path, error: error instanceof Error ? error.message : String(error) })

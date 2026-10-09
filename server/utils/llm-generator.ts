@@ -41,6 +41,7 @@ import { markdownToPlainText, isMarkdownFile, isJsonSpecFile, extractFrontmatter
 import { parseApiSpec, apiSpecToPlainText } from './openapi-parser'
 import { resolveLayoutForPath } from './config'
 import { logger } from './logger'
+import { isConfinedEntry } from './paths'
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -116,7 +117,7 @@ async function collectContent(
         // Recurse into subdirectory
         const subItems = await collectContent(entryPath, contentDir, entryUrlPath)
         items.push(...subItems)
-      } else if (isMarkdownFile(entry.name)) {
+      } else if (isMarkdownFile(entry.name) && await isConfinedEntry(dirPath, entry, contentDir)) {
         // Process markdown file — skip on failure rather than crashing
         try {
           const rawContent = await readFile(entryPath, 'utf-8')
@@ -192,7 +193,7 @@ async function collectContent(
             error: fileError instanceof Error ? fileError.message : String(fileError),
           })
         }
-      } else if (isJsonSpecFile(entry.name)) {
+      } else if (isJsonSpecFile(entry.name) && await isConfinedEntry(dirPath, entry, contentDir)) {
         // Process API spec file
         try {
           const spec = await parseApiSpec(entryPath)

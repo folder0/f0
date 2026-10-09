@@ -52,6 +52,7 @@
 import { readdir, readFile, stat } from 'fs/promises'
 import { join, relative } from 'path'
 import { logger } from '../../utils/logger'
+import { isConfinedEntry } from '../../utils/paths'
 
 /**
  * Count non-overlapping occurrences of `needle` in `haystack`.
@@ -133,7 +134,7 @@ async function buildContentIndex(contentDir: string): Promise<ContentItem[]> {
             .join(' ')
           
           await scanDir(fullPath, sectionName || section)
-        } else if (entry.name.endsWith('.md')) {
+        } else if (entry.name.endsWith('.md') && await isConfinedEntry(dir, entry, contentDir)) {
           try {
             const rawContent = await readFile(fullPath, 'utf-8')
             const { frontmatter, content: mdContent } = extractFrontmatter(rawContent)
