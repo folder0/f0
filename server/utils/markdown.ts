@@ -39,7 +39,7 @@ import type { Root, Text, Paragraph } from 'mdast'
 import type { Root as HastRoot, Element } from 'hast'
 import yaml from 'yaml'
 import { logger } from './logger'
-import { rehypeDropTableWhitespace, rehypeRestoreTableWhitespace, rehypeStripDangerous } from './sanitize'
+import { rehypeDropTableWhitespace, rehypeRestoreTableWhitespace, rehypeStripDangerous, stabilizeHtml } from './sanitize'
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -991,9 +991,10 @@ export async function parseMarkdown(content: string): Promise<ParsedMarkdown> {
       // Convert to HTML string
       .use(rehypeStringify, { allowDangerousHtml: true })
     
-    // Process the markdown
+    // Process the markdown, then re-parse the HTML the way the browser will
+    // and sanitize again until stable (defeats mutation XSS)
     const result = await processor.process(preprocessedContent)
-    const html = String(result)
+    const html = stabilizeHtml(String(result))
     
     // Generate plain text for LLM
     const plainText = markdownToPlainText(content)

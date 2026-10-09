@@ -1,41 +1,82 @@
 /**
  * =============================================================================
- * F0 - HTML SANITIZER (STOPGAP DENYLIST)
+ * F0 - HTML SANITIZER
  * =============================================================================
  *
  * Markdown is rendered with allowDangerousHtml, so raw HTML written by authors
- * (or uploaded through the admin API) reaches readers. This rehype plugin runs
- * after rehype-raw has parsed that raw HTML into real nodes, and removes the
- * constructs that execute script:
+ * (or uploaded through the admin API) reaches readers. Two layers keep script
+ * out of the rendered page:
  *
- * - elements: script, object, embed, applet, base, meta, link, frame, frameset
- * - SVG animation elements that retarget href (animate/set ... attributeName=href)
- * - attributes: every on* event handler, iframe srcdoc, form action, formaction
- * - URLs: javascript: and vbscript: anywhere; data: except images in img/source
+ * 1. stripDangerous(), a denylist applied to the parsed tree. It removes:
+ *    - elements: script, object, embed, applet, base, meta, link, frame,
+ *      frameset, template, noscript
+ *    - SVG animation elements that retarget href (animate/set attributeName=href)
+ *    - attributes: event handlers (onclick, onerror, ...), iframe srcdoc
+ *    - URLs: javascript: and vbscript: anywhere; data: except images in image
+ *      contexts (img/source src, SVG image/feImage href, video poster)
+ *
+ * 2. stabilizeHtml(), a parse/sanitize round trip. A denylist alone is not
+ *    enough: markup can serialize into something the browser parses
+ *    differently (mutation XSS: noscript, MathML/SVG namespace confusion,
+ *    raw-text elements). The serialized HTML is re-parsed exactly as the
+ *    browser will parse it (a fragment in a <div>, scripting enabled) and
+ *    sanitized again until the output stops changing, so what the browser
+ *    builds is what was sanitized.
  *
  * It is a denylist on purpose: it must not change legitimate output (callouts,
- * embeds, picture/srcset, code blocks, author styling). It runs after heading
- * ids and the TOC are computed, so anchors cannot move. The full allowlist
- * schema arrives with the unified mdast pipeline.
+ * embeds, picture/srcset, code blocks, author styling, forms, inline SVG).
+ * It runs after heading ids and the TOC are computed, so anchors cannot move.
  */
 
-import type { Element, Root } from 'hast'
+import type { Element, Root, RootContent } from 'hast'
+import { fromParse5 } from 'hast-util-from-parse5'
+import { toHtml } from 'hast-util-to-html'
+import { parseFragment } from 'parse5'
 import { SKIP, visit } from 'unist-util-visit'
 
 const REMOVED_ELEMENTS = new Set([
   'script', 'object', 'embed', 'applet', 'base', 'meta', 'link', 'frame', 'frameset',
+  // template content is not part of the tree's children (and declarative
+  // shadow DOM makes it live); noscript content is raw text that re-parses
+  // differently depending on scripting. Neither belongs in docs content.
+  'template', 'noscript',
 ])
 
 const SVG_ANIMATION_ELEMENTS = new Set(['animate', 'set', 'animatemotion', 'animatetransform'])
 
-/** hast property names that hold a single URL. */
+/** hast property names that hold a URL. */
 const URL_PROPERTIES = [
   'href', 'src', 'cite', 'background', 'poster', 'data', 'xLinkHref',
-  'longDesc', 'codeBase', 'manifest', 'dynsrc', 'lowsrc', 'ping',
+  'longDesc', 'codeBase', 'manifest', 'dynsrc', 'lowsrc', 'ping', 'action', 'formAction',
 ]
 
-/** Elements whose src/srcset may legitimately use a data:image URL. */
-const DATA_IMAGE_ELEMENTS = new Set(['img', 'source'])
+/** (element, property) pairs where a data:image URL is just an image. */
+const DATA_IMAGE_CONTEXTS: Record<string, string[]> = {
+  img: ['src', 'srcSet'],
+  source: ['src', 'srcSet'],
+  image: ['href', 'xLinkHref'],
+  feimage: ['href', 'xLinkHref'],
+  video: ['poster'],
+}
+
+/**
+ * Event handler attributes that hast does not convert to camelCase (it only
+ * knows a fixed list). Lowercase so they can be compared after toLowerCase().
+ */
+const EXTRA_EVENT_HANDLERS = new Set([
+  'onbeforetoggle', 'ontoggle', 'onbeforematch', 'oncommand', 'oncontentvisibilityautostatechange',
+  'onscrollend', 'onscrollsnapchange', 'onscrollsnapchanging', 'onpagereveal', 'onpageswap',
+  'onpointerrawupdate', 'onsecuritypolicyviolation', 'onformdata', 'onslotchange', 'onbeforeinput',
+  'onanimationcancel', 'ontransitioncancel', 'ontransitionrun', 'ontransitionstart',
+  'onbegin', 'onend', 'onrepeat', 'onfocusin', 'onfocusout', 'onsearch', 'onwebkitanimationend',
+])
+
+/** True for attributes that browsers run as script. */
+function isEventHandler(name: string): boolean {
+  // Known handlers are camelCase in hast: onClick, onError, onLoad ...
+  if (/^on[A-Z]/.test(name)) return true
+  return EXTRA_EVENT_HANDLERS.has(name.toLowerCase())
+}
 
 /**
  * True when a URL would execute script or embed an arbitrary document.
@@ -47,7 +88,7 @@ export function isDangerousUrl(value: string, tagName: string, property: string)
   const normalized = value.replace(/[\u0000- \u007F]/g, '').toLowerCase()
   if (normalized.startsWith('javascript:') || normalized.startsWith('vbscript:')) return true
   if (normalized.startsWith('data:')) {
-    const imageContext = DATA_IMAGE_ELEMENTS.has(tagName) && (property === 'src' || property === 'srcSet')
+    const imageContext = DATA_IMAGE_CONTEXTS[tagName.toLowerCase()]?.includes(property) ?? false
     return !(imageContext && normalized.startsWith('data:image/'))
   }
   return false
@@ -64,12 +105,7 @@ function cleanElement(node: Element): void {
   const tag = node.tagName.toLowerCase()
 
   for (const name of Object.keys(props)) {
-    // Event handler attributes: onclick, onerror, onload, ... (hast: onClick, onError)
-    if (/^on/i.test(name)) {
-      delete props[name]
-      continue
-    }
-    if (name === 'formAction' || (tag === 'form' && name === 'action') || (tag === 'iframe' && name === 'srcDoc')) {
+    if (isEventHandler(name) || (tag === 'iframe' && name === 'srcDoc')) {
       delete props[name]
     }
   }
@@ -90,22 +126,56 @@ function cleanElement(node: Element): void {
   }
 }
 
-/** rehype plugin: remove script-capable elements, attributes and URLs. */
+/** Remove script-capable elements, attributes and URLs from a tree in place. */
+export function stripDangerous(tree: Root): void {
+  visit(tree, 'element', (node: Element, index, parent) => {
+    const tag = node.tagName.toLowerCase()
+    const retargetsHref = SVG_ANIMATION_ELEMENTS.has(tag)
+      && propertyAsStrings(node.properties?.attributeName).some(v => /href/i.test(v))
+
+    if ((REMOVED_ELEMENTS.has(tag) || retargetsHref) && parent && index !== undefined) {
+      parent.children.splice(index, 1)
+      return [SKIP, index]
+    }
+
+    cleanElement(node)
+  })
+}
+
+/** rehype plugin form of stripDangerous. */
 export function rehypeStripDangerous() {
-  return (tree: Root) => {
-    visit(tree, 'element', (node: Element, index, parent) => {
-      const tag = node.tagName.toLowerCase()
-      const retargetsHref = SVG_ANIMATION_ELEMENTS.has(tag)
-        && propertyAsStrings(node.properties?.attributeName).some(v => /href/i.test(v))
+  return (tree: Root) => stripDangerous(tree)
+}
 
-      if ((REMOVED_ELEMENTS.has(tag) || retargetsHref) && parent && index !== undefined) {
-        parent.children.splice(index, 1)
-        return [SKIP, index]
-      }
+// =============================================================================
+// ROUND TRIP: SANITIZE WHAT THE BROWSER WILL ACTUALLY PARSE
+// =============================================================================
 
-      cleanElement(node)
-    })
+const DIV_CONTEXT = parseFragment('<div></div>').childNodes[0]
+const MAX_PASSES = 4
+
+/** Parse an HTML fragment the way a browser parses div.innerHTML / SSR body content. */
+function parseLikeBrowser(html: string): Root {
+  const fragment = parseFragment(DIV_CONTEXT as Parameters<typeof parseFragment>[0], html, { scriptingEnabled: true })
+  return fromParse5(fragment) as Root
+}
+
+/**
+ * Re-parse sanitized HTML as the browser will and sanitize again until the
+ * output is stable. Returns HTML that parses to an already-sanitized tree.
+ * If it does not converge (pathological input), returns the text escaped.
+ */
+export function stabilizeHtml(html: string): string {
+  let current = html
+  for (let pass = 0; pass < MAX_PASSES; pass++) {
+    const tree = parseLikeBrowser(current)
+    stripDangerous(tree)
+    const next = toHtml(tree)
+    if (next === current) return current
+    current = next
   }
+  // Did not converge: never return markup we could not prove stable.
+  return toHtml({ type: 'root', children: [{ type: 'element', tagName: 'pre', properties: {}, children: [{ type: 'text', value: html }] as RootContent[] }] } as Root)
 }
 
 // =============================================================================
