@@ -15,6 +15,16 @@ The Dockerfile has two targets:
 
 Content is copied last, so changing only content reuses the cached app build: `docker build --target engine -t f0-engine .` once, then content changes cost seconds.
 
+The engine image is also published for every release (`ghcr.io/adeinnovates/f0:<version>`, `:latest`) and every push to `master` (`:edge`), for amd64 and arm64, after the test suite passes. A content-only site can build on it instead of compiling the app:
+
+```dockerfile
+FROM ghcr.io/adeinnovates/f0:1.0.0
+COPY --chown=1001:1001 content ./content
+COPY --chown=1001:1001 private ./private
+```
+
+Pin a version tag (or a digest) rather than `latest`, so a site changes engine only when you choose to. GitHub creates the package as private on its first publish; set its visibility to public in the package settings, or give the servers that build sites a token with `read:packages`.
+
 | Platform | Notes |
 |----------|-------|
 | **Coolify** | The documented path. See the Coolify guide. |

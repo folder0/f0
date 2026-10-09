@@ -1,4 +1,5 @@
-# Runs on every push to the main branches and on pull requests.
+# Runs on every push to the main branches and on pull requests, and as the
+# gate in front of the release workflow (workflow_call).
 # Actions are pinned to commit SHAs; Dependabot keeps them current.
 name: CI
 
@@ -6,12 +7,15 @@ on:
   push:
     branches: [master, main]
   pull_request:
+  workflow_call:
 
 permissions:
   contents: read
 
+# github.workflow is the caller's name when called from Release, so the two
+# runs for one push do not cancel each other.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
