@@ -260,6 +260,10 @@ The same full text as `/llms.txt`, at the location the [llms.txt convention](htt
 
 Agents read the index first, then fetch only the sections they need.
 
+### `/mcp` — Model Context Protocol
+
+AI tools that speak MCP (Claude, Cursor, VS Code and others) can use the site directly. Add it as a remote HTTP MCP server at `https://your-site/mcp`. It offers three read-only tools: `search_docs`, `read_page` (Markdown by path) and `list_pages` (sections and pages). On private sites, send the session token as `Authorization: Bearer <token>`; drafts and access rules are the same as for readers.
+
 ### `/api/agents/search` — Semantic Search
 
 ```
@@ -366,6 +370,7 @@ Checks: frontmatter YAML, image references, heading hierarchy, title resolution,
 | `/api/auth/request-otp` | POST | Request OTP (private mode) |
 | `/api/auth/verify-otp` | POST | Verify OTP (private mode) |
 | `/api/auth/session` | GET | Who is signed in (from the session cookie) |
+| `/mcp` | POST | Model Context Protocol server (search, read and list pages) |
 | `/api/auth/logout` | POST | End the session and clear the cookie |
 | `/api/webhook` | POST | GitHub webhook for content sync |
 

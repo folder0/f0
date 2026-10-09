@@ -155,9 +155,11 @@ export default defineEventHandler(async (event) => {
     return query ? `/login?${query}` : '/login'
   }
 
-  // Reject the request: 401 for API routes, redirect to /login for pages.
+  // Reject the request: 401 for API routes (and /mcp, which agents call),
+  // redirect to /login for pages.
+  const isApi = path.startsWith('/api/') || path === '/mcp'
   const deny = (apiMessage: string, reason?: string, error?: string) => {
-    if (path.startsWith('/api/')) {
+    if (isApi) {
       throw createError({
         statusCode: 401,
         statusMessage: 'Unauthorized',
@@ -182,7 +184,7 @@ export default defineEventHandler(async (event) => {
 
   // No token found
   if (!token) {
-    if (path.startsWith('/api/')) {
+    if (isApi) {
       await auditLog(event, 'access_denied', 'anonymous', false, 'no_token', {
         path,
         method: event.method,
