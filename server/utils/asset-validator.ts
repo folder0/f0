@@ -18,6 +18,7 @@
 import { existsSync } from 'fs'
 import { join, resolve, dirname } from 'path'
 import { logger } from './logger'
+import { resolveAssetUrl } from './content-core'
 
 // =============================================================================
 // TYPES
@@ -79,32 +80,29 @@ export function extractImageReferences(markdown: string): string[] {
 // =============================================================================
 
 /**
- * Resolve a relative image path to an absolute filesystem path.
- * 
- * Resolution rules:
- * - `./assets/images/x.png` → `contentDir/assets/images/x.png`
- * - `assets/images/x.png` → `contentDir/assets/images/x.png`
- * - `../shared/x.png` → relative to the markdown file's directory
- * - `/assets/images/x.png` → `contentDir/assets/images/x.png`
+ * The file in content/assets an image reference is served from, using the
+ * same rule as rendering (content-core resolveAssetUrl), so validation and
+ * pages agree:
+ * - `./assets/images/x.png`, `assets/images/x.png`, `images/x.png`
+ *   → `contentDir/assets/images/x.png`
+ * - `/api/content/assets/x.png` → `contentDir/assets/x.png`
+ * Returns null for references that are not content assets (absolute URLs,
+ * root paths served from public/, paths climbing out with `..`).
  */
 export function resolveAssetPath(
   contentDir: string,
-  markdownFilePath: string,
+  _markdownFilePath: string,
   imageSrc: string
-): string {
-  // Absolute content-relative path
-  if (imageSrc.startsWith('/')) {
-    return join(contentDir, imageSrc)
+): string | null {
+  const url = resolveAssetUrl(imageSrc.split(/[?#]/)[0])
+  const prefix = '/api/content/assets/'
+  if (!url.startsWith(prefix)) return null
+  try {
+    return join(contentDir, 'assets', decodeURIComponent(url.slice(prefix.length)))
   }
-
-  // Relative path starting with ./assets/ or assets/
-  if (imageSrc.startsWith('./assets/') || imageSrc.startsWith('assets/')) {
-    return join(contentDir, imageSrc.replace(/^\.\//, ''))
+  catch {
+    return null
   }
-
-  // Other relative paths — resolve from the markdown file's directory
-  const mdDir = dirname(resolve(markdownFilePath))
-  return resolve(mdDir, imageSrc)
 }
 
 // =============================================================================
@@ -126,6 +124,7 @@ export function validateAssets(
 
   for (const src of refs) {
     const resolvedPath = resolveAssetPath(contentDir, markdownFilePath, src)
+    if (!resolvedPath) continue // not a content asset; nothing to check
     const exists = existsSync(resolvedPath)
 
     const ref: AssetReference = {

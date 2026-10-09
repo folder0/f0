@@ -110,38 +110,44 @@ let cachedDirStructureHash: string = '' // Hash of directory listing
  * This is much cheaper than a full recursive scan.
  */
 async function computeDirStructureHash(contentDir: string): Promise<string> {
+  // Every folder and page at any depth: a title, order or draft edit three
+  // folders down must refresh the sidebar too (this used to stop at depth 2)
   const parts: string[] = []
-  try {
-    const entries = await readdir(contentDir, { withFileTypes: true })
+  async function walk(dir: string, prefix: string): Promise<void> {
+    let entries
+    try {
+      entries = await readdir(dir, { withFileTypes: true })
+    }
+    catch {
+      return
+    }
     for (const entry of entries) {
       if (entry.name.startsWith('.') || entry.name.startsWith('_')) continue
       if (entry.name === 'assets' || entry.name === 'images') continue
-      const entryPath = join(contentDir, entry.name)
+      const entryPath = join(dir, entry.name)
       try {
         const s = await stat(entryPath)
-        parts.push(`${entry.name}:${s.mtimeMs}:${entry.isDirectory() ? 'd' : 'f'}`)
-        // One level deeper for directories
-        if (entry.isDirectory()) {
-          const subEntries = await readdir(entryPath, { withFileTypes: true })
-          for (const sub of subEntries) {
-            if (sub.name.startsWith('.') || sub.name.startsWith('_')) continue
-            try {
-              const ss = await stat(join(entryPath, sub.name))
-              parts.push(`${entry.name}/${sub.name}:${ss.mtimeMs}`)
-            } catch {}
-          }
-        }
-      } catch {}
+        parts.push(`${prefix}${entry.name}:${s.mtimeMs}:${s.isDirectory() ? 'd' : 'f'}`)
+        if (s.isDirectory()) await walk(entryPath, `${prefix}${entry.name}/`)
+      }
+      catch {}
     }
-  } catch {}
+  }
+  await walk(contentDir, '')
   return parts.sort().join('|')
 }
+
+// Re-validate at most once per interval, so large sites do not stat every
+// page on every navigation request
+const NAV_VALIDATION_INTERVAL_MS = 1000
+let navValidatedAt = 0
 
 /**
  * Check if navigation cache is still valid using mtime comparison.
  */
 async function isNavCacheValid(contentDir: string): Promise<boolean> {
   if (!navigationCache) return false
+  if (Date.now() - navValidatedAt < NAV_VALIDATION_INTERVAL_MS) return true
 
   // Check nav.md mtime
   try {
@@ -154,7 +160,9 @@ async function isNavCacheValid(contentDir: string): Promise<boolean> {
 
   // Check directory structure hash
   const currentHash = await computeDirStructureHash(contentDir)
-  return currentHash === cachedDirStructureHash
+  if (currentHash !== cachedDirStructureHash) return false
+  navValidatedAt = Date.now()
+  return true
 }
 
 /**
@@ -163,6 +171,7 @@ async function isNavCacheValid(contentDir: string): Promise<boolean> {
  */
 export function invalidateNavigationCache(): void {
   navigationCache = null
+  navValidatedAt = 0
   contentMetaCache.clear()
   cachedNavMtime = 0
   cachedDirStructureHash = ''
@@ -465,6 +474,7 @@ export async function buildNavigation(contentDir: string): Promise<Navigation> {
     cachedNavMtime = 0
   }
   cachedDirStructureHash = await computeDirStructureHash(contentDir)
+  navValidatedAt = Date.now()
   
   return navigationCache
 }

@@ -56,6 +56,21 @@ describe('nearest _config.md', () => {
   })
 })
 
+describe('sidebar refresh', () => {
+  it('picks up a title edit three folders deep without a restart', async () => {
+    const titles = async () => {
+      const nav = await json('/api/navigation')
+      const flat = (items: { title: string, children?: unknown[] }[]): string[] =>
+        items.flatMap(item => [item.title, ...flat((item.children ?? []) as { title: string }[])])
+      return flat(nav.sidebar['/guides'])
+    }
+    expect(await titles()).toContain('Release One')
+    writeFileSync(join(site.contentDir, 'guides/changelog/2026-01-01-release.md'), '---\ntitle: Release Renamed\ndate: 2026-01-01\n---\n\nRelease notes.\n')
+    await new Promise(r => setTimeout(r, 1100))
+    expect(await titles()).toContain('Release Renamed')
+  })
+})
+
 describe('webhook push', () => {
   it('clears the search index along with every other content cache', async () => {
     const search = async () => ((await json('/api/search?q=zanzibar')).results as { path: string }[]).map(r => r.path)

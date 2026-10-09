@@ -31,9 +31,9 @@
  */
 
 import { readdir, readFile, stat } from 'fs/promises'
-import { existsSync } from 'fs'
+import { existsSync, readdirSync } from 'fs'
 import { join, resolve, extname, basename, dirname, relative } from 'path'
-import { parse as yamlParse } from 'yaml'
+import { fileToUrlPath, firstHeading, readFrontmatter, stringField, urlNamesFor } from '../server/utils/content-core.ts'
 
 // =============================================================================
 // COLORS (ANSI escape codes)
@@ -66,17 +66,9 @@ const c = {
  * Returns { frontmatter, content, error }
  */
 function extractFrontmatter(content) {
-  const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/)
-  if (!match) {
-    return { frontmatter: null, content, error: null }
-  }
-
-  try {
-    const fm = yamlParse(match[1])
-    return { frontmatter: fm || {}, content: match[2], error: null }
-  } catch (err) {
-    return { frontmatter: null, content: match[2], error: err.message }
-  }
+  // The server's reader (BOM, CRLF, empty blocks), so the CLI and the site agree
+  const doc = readFrontmatter(content)
+  return { frontmatter: doc.data, content: doc.body, error: doc.error ?? null }
 }
 
 /**
@@ -103,14 +95,22 @@ function lineNumber(content, charIndex) {
 }
 
 /**
- * Resolve image path to filesystem.
+ * The file in content/assets an image reference is served from, with the
+ * rule pages render with (server/utils/content-core.ts resolveAssetUrl):
+ * relative paths point into content/assets, with or without "assets/".
+ * Null for references that are not content assets (URLs, root paths served
+ * from public/, paths climbing out with ..).
  */
 function resolveImagePath(contentDir, mdFilePath, src) {
-  if (src.startsWith('/')) return join(contentDir, src)
-  if (src.startsWith('./assets/') || src.startsWith('assets/')) {
-    return join(contentDir, src.replace(/^\.\//, ''))
+  const path = src.trim().split(/[?#]/)[0]
+  if (/^[a-z][a-z0-9+.-]*:/i.test(path) || path.startsWith('//')) return null
+  if (path.startsWith('/api/content/assets/')) {
+    return join(contentDir, 'assets', decodeURIComponent(path.slice('/api/content/assets/'.length)))
   }
-  return resolve(dirname(mdFilePath), src)
+  if (path.startsWith('/')) return null
+  const rel = path.replace(/^(\.\/)+/, '')
+  if (rel.split('/').includes('..')) return null
+  return join(contentDir, 'assets', rel.replace(/^assets\//, ''))
 }
 
 /**
@@ -132,16 +132,7 @@ function extractHeadings(content) {
  * Generate URL slug from file path.
  */
 function fileToSlug(contentDir, filePath) {
-  const rel = relative(contentDir, filePath)
-  return '/' + rel
-    .replace(/\\/g, '/')
-    .replace(extname(rel), '')
-    .replace(/^\d{4}-\d{2}-\d{2}-/, '')
-    .replace(/\/\d{4}-\d{2}-\d{2}-/g, '/')
-    .replace(/^\d+-/, '')
-    .replace(/\/\d+-/g, '/')
-    .replace(/\/index$/, '')
-    .replace(/^home$/, '')
+  return fileToUrlPath(relative(contentDir, filePath))
 }
 
 // =============================================================================
@@ -200,6 +191,27 @@ async function scanImages(dir) {
 // NAV.MD VALIDATION
 // =============================================================================
 
+/**
+ * A URL path to a folder, matching numbered folders as the server does
+ * ([Reference](/reference) → 02-reference/). Null when nothing matches.
+ */
+function resolveUrlDirSync(contentDir, segments) {
+  let dir = contentDir
+  for (const segment of segments) {
+    let names = []
+    try {
+      names = readdirSync(dir, { withFileTypes: true }).filter(e => e.isDirectory()).map(e => e.name).sort()
+    }
+    catch {
+      return null
+    }
+    const name = names.includes(segment) ? segment : names.find(n => !n.startsWith('.') && !n.startsWith('_') && urlNamesFor(n).includes(segment))
+    if (!name) return null
+    dir = join(dir, name)
+  }
+  return dir
+}
+
 async function validateNavMd(contentDir) {
   const issues = []
   const navPath = join(contentDir, 'nav.md')
@@ -226,8 +238,7 @@ async function validateNavMd(contentDir) {
     // Check each link target exists as a directory
     for (const link of links) {
       if (link.path.startsWith('http://') || link.path.startsWith('https://')) continue
-      const targetDir = join(contentDir, link.path.replace(/^\//, ''))
-      if (!existsSync(targetDir)) {
+      if (!resolveUrlDirSync(contentDir, link.path.split('/').filter(Boolean))) {
         issues.push({
           file: 'nav.md',
           line: link.line,
@@ -350,8 +361,8 @@ async function validate(contentDir) {
     // Title resolution check
     const headings = extractHeadings(mdContent)
     const h1 = headings.find(h => h.level === 1)
-    const fmTitle = frontmatter?.title
-    if (!fmTitle && !h1) {
+    const fmTitle = stringField(frontmatter ?? {}, 'title')
+    if (!fmTitle && !h1 && !firstHeading(mdContent)) {
       issues.push({
         file: relPath,
         severity: 'warning',
@@ -379,7 +390,7 @@ async function validate(contentDir) {
     const imgRefs = extractImageRefs(content)
     for (const ref of imgRefs) {
       const resolved = resolveImagePath(contentDir, file, ref.src)
-      if (!existsSync(resolved)) {
+      if (resolved && !existsSync(resolved)) {
         issues.push({
           file: relPath,
           line: lineNumber(content, ref.index),
