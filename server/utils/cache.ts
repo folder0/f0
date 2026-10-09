@@ -31,6 +31,7 @@ import { parseMarkdownSafe, type ParsedMarkdown } from './markdown'
 import { logger } from './logger'
 import { validateAndLogAssets } from './asset-validator'
 import { f0Config } from './f0-config'
+import { onContentChange } from './invalidation'
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -198,3 +199,5 @@ export async function prewarmCache(filePaths: string[]): Promise<{ cached: numbe
 
   return { cached, errors }
 }
+
+onContentChange('content', invalidateContentCache)

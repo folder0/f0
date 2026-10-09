@@ -83,7 +83,7 @@ export default defineEventHandler(async (event) => {
       }
       
       // Determine layout
-      const layout = resolveLayoutForPath(settings.contentDir, contentSlug)
+      const layout = resolveLayoutForPath(settings.contentDir, contentSlug, filePath)
       
       // Base response
       const response: Record<string, unknown> = {
@@ -101,7 +101,7 @@ export default defineEventHandler(async (event) => {
       // Add blog metadata when layout is blog
       if (layout === 'blog') {
         const fm = cached.frontmatter
-        const dirConfig = getConfigForPath(settings.contentDir, contentSlug)
+        const dirConfig = getConfigForPath(settings.contentDir, contentSlug, filePath)
         const { content: bodyContent } = extractFrontmatter(cached.rawMarkdown)
         const filename = basename(filePath)
         

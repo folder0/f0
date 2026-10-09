@@ -56,6 +56,7 @@ import { isConfinedEntry } from '../../utils/paths'
 import { f0Config } from '../../utils/f0-config'
 import { fileToUrlPath, readFrontmatter, resolvePageTitle, titleFromFileName } from '../../utils/content-core'
 import { hiddenFromListings } from '../../utils/drafts'
+import { onContentChange } from '../../utils/invalidation'
 
 /**
  * Count non-overlapping occurrences of `needle` in `haystack`.
@@ -103,6 +104,7 @@ interface ContentItem {
 // Cache for content index
 let contentIndex: ContentItem[] | null = null
 let indexTimestamp: number = 0
+onContentChange('agent-search', () => { contentIndex = null })
 const INDEX_TTL = 60000 // Rebuild index every 60 seconds
 
 /**

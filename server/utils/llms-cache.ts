@@ -21,6 +21,7 @@ import { join, resolve } from 'path'
 import { createHash } from 'crypto'
 import { generateLlmText, getLlmStats, type LlmGeneratorOptions } from './llm-generator'
 import { logger } from './logger'
+import { onContentChange } from './invalidation'
 
 // =============================================================================
 // CACHE STATE
@@ -192,3 +193,5 @@ export function getLlmsCacheStatus(): {
     hash: cachedLlmsHash,
   }
 }
+
+onContentChange('llms', invalidateLlmsCache)

@@ -340,6 +340,8 @@ That single `layout: blog` declaration is what switches this directory from docs
 
 ### 2.2 — Blog Configuration Options
 
+A page uses the nearest `_config.md` in its folder or any folder above it, so `guides/changelog/_config.md` can make just the changelog a blog. Edits take effect on the next request, no restart needed.
+
 The `_config.md` file supports these fields:
 
 ```yaml

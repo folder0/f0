@@ -158,7 +158,7 @@ async function collectContent(
           // Check if this file is in a blog directory and add metadata
           blogMeta: (() => {
             try {
-              const layout = resolveLayoutForPath(contentDir, entryUrlPath)
+              const layout = resolveLayoutForPath(contentDir, entryUrlPath, entryPath)
               if (layout === 'blog') {
                 const frontmatter = doc.data
                 let date = ''

@@ -24,6 +24,7 @@ import { createHash } from 'crypto'
 import { f0Config } from '../utils/f0-config'
 import { fileToUrlPath, readFrontmatter } from '../utils/content-core'
 import { hiddenFromListings } from '../utils/drafts'
+import { onContentChange } from '../utils/invalidation'
 
 // =============================================================================
 // TYPES
@@ -45,6 +46,7 @@ interface SitemapEntry {
 // cached copy would pin every later response to the first requester's Host.
 let cachedPages: SitemapEntry[] | null = null
 let cachedSitemapHash: string | null = null
+onContentChange('sitemap', () => { cachedPages = null; cachedSitemapHash = null })
 
 // =============================================================================
 // CONTENT SCANNING
@@ -92,7 +94,7 @@ async function collectPages(
 
         // Determine changefreq and priority based on content type and depth
         const depth = pagePath.split('/').filter(Boolean).length
-        const layout = resolveLayoutForPath(contentDir, pagePath)
+        const layout = resolveLayoutForPath(contentDir, pagePath, fullPath)
 
         let changefreq: SitemapEntry['changefreq'] = 'monthly'
         let priority = 0.8

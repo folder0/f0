@@ -37,6 +37,7 @@ import { markdownToPlainText, isMarkdownFile } from '../utils/markdown'
 import { f0Config } from '../utils/f0-config'
 import { readFrontmatter, stripOrderPrefix } from '../utils/content-core'
 import { hiddenFromListings } from '../utils/drafts'
+import { onContentChange } from '../utils/invalidation'
 
 // =============================================================================
 // TYPES
@@ -55,6 +56,7 @@ interface SectionInfo {
 
 let cachedIndex: string | null = null
 let cachedIndexHash: string | null = null
+onContentChange('llms-index', () => { cachedIndex = null; cachedIndexHash = null })
 
 // =============================================================================
 // CONTENT SCANNING

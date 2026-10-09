@@ -29,14 +29,10 @@
 
 import { writeFile, mkdir } from 'fs/promises'
 import { join, dirname, extname, normalize } from 'path'
-import { invalidateNavigationCache } from '../../utils/navigation'
-import { invalidateContentCache } from '../../utils/cache'
-import { invalidateConfigCache } from '../../utils/config'
-import { invalidateLlmsCache } from '../../utils/llms-cache'
-import { invalidateBrandCache } from '../../utils/brand'
 import { assertAdmin } from '../../utils/admin'
 import { logger } from '../../utils/logger'
 import { f0Config } from '../../utils/f0-config'
+import { invalidateContentCaches } from '../../utils/invalidation'
 
 // =============================================================================
 // CONFIGURATION
@@ -210,12 +206,9 @@ export default defineEventHandler(async (event) => {
     // Write file
     await writeFile(fullPath, fileData.data)
     
-    // Invalidate all caches
-    invalidateNavigationCache()
-    invalidateContentCache()
-    invalidateConfigCache()
-    invalidateLlmsCache()
-    invalidateBrandCache()
+    // Invalidate every content-derived cache (navigation, pages, config,
+    // brand, llms, search, sitemap ...)
+    invalidateContentCaches('admin upload')
     
     logger.info('File uploaded', { path: cleanPath, email: adminEmail })
     

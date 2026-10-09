@@ -23,6 +23,7 @@ import { readFileSync, existsSync, statSync } from 'fs'
 import { join } from 'path'
 import { logger } from './logger'
 import { readFrontmatter, resolveAssetUrl as resolveContentAssetUrl } from './content-core'
+import { onContentChange } from './invalidation'
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -206,3 +207,5 @@ export function invalidateBrandCache(): void {
   brandCache = null
   brandMtime = 0
 }
+
+onContentChange('brand', invalidateBrandCache)

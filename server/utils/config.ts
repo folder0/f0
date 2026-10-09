@@ -17,11 +17,12 @@
  * - C-OPS-ZERO-CONFIG-DEFAULT-008: Default is docs, no config needed
  */
 
-import { readFileSync, existsSync } from 'fs'
-import { join, dirname } from 'path'
+import { readFileSync, statSync } from 'fs'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'path'
 import { logger } from './logger'
-import { f0Config } from './f0-config'
+import { changeEnabled, f0Config } from './f0-config'
 import { readFrontmatter, resolveAssetUrl as resolveContentAssetUrl } from './content-core'
+import { onContentChange } from './invalidation'
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -73,13 +74,18 @@ const DEFAULT_BLOG_CONFIG: DirectoryConfig = {
 // CACHE
 // =============================================================================
 
-const configCache = new Map<string, DirectoryConfig>()
-let cacheTimestamp = 0
-const CACHE_TTL = 5000 // 5 seconds in dev
+// Each entry remembers the mtime of the _config.md it came from (-1 when the
+// folder has none), so an edited, added or removed _config.md takes effect on
+// the next request. (Earlier versions never refreshed it in production.)
+const configCache = new Map<string, { config: DirectoryConfig, mtimeMs: number }>()
 
-function isCacheValid(): boolean {
-  if (process.env.NODE_ENV === 'production') return true
-  return (Date.now() - cacheTimestamp) < CACHE_TTL
+function configFileMtime(configPath: string): number {
+  try {
+    return statSync(configPath).mtimeMs
+  }
+  catch {
+    return -1
+  }
 }
 
 /**
@@ -87,7 +93,6 @@ function isCacheValid(): boolean {
  */
 export function invalidateConfigCache(): void {
   configCache.clear()
-  cacheTimestamp = 0
 }
 
 // =============================================================================
@@ -168,20 +173,20 @@ export function resolveDirectoryConfig(contentDir: string, dirPath: string): Dir
   // Normalize dirPath
   const normalizedDir = dirPath.replace(/^\//, '').replace(/\/$/, '') || ''
   const cacheKey = `${contentDir}:${normalizedDir}`
+  const fullDirPath = normalizedDir ? join(contentDir, normalizedDir) : contentDir
+  const configPath = join(fullDirPath, '_config.md')
+  const mtimeMs = configFileMtime(configPath)
   
   // Check cache
-  if (configCache.has(cacheKey) && isCacheValid()) {
-    return configCache.get(cacheKey)!
+  const cached = configCache.get(cacheKey)
+  if (cached && cached.mtimeMs === mtimeMs) {
+    return cached.config
   }
   
   // 1. Check for _config.md in this directory
-  const fullDirPath = normalizedDir ? join(contentDir, normalizedDir) : contentDir
-  const configPath = join(fullDirPath, '_config.md')
-  
-  if (existsSync(configPath)) {
+  if (mtimeMs !== -1) {
     const config = parseConfigFile(configPath)
-    configCache.set(cacheKey, config)
-    cacheTimestamp = Date.now()
+    configCache.set(cacheKey, { config, mtimeMs })
     return config
   }
   
@@ -192,16 +197,32 @@ export function resolveDirectoryConfig(contentDir: string, dirPath: string): Dir
       title: process.env.NUXT_PUBLIC_SITE_NAME || 'Blog',
       description: process.env.NUXT_PUBLIC_SITE_DESCRIPTION || '',
     }
-    configCache.set(cacheKey, config)
-    cacheTimestamp = Date.now()
+    configCache.set(cacheKey, { config, mtimeMs })
     return config
   }
   
   // 3. Default: docs layout
   const config = { ...DEFAULT_DOCS_CONFIG }
-  configCache.set(cacheKey, config)
-  cacheTimestamp = Date.now()
+  configCache.set(cacheKey, { config, mtimeMs })
   return config
+}
+
+/**
+ * The config that applies to a content file: the nearest _config.md in its
+ * folder or any folder above it, up to the content root (where F0_MODE=blog
+ * also applies). F0_FLAGS=-nested-config restores the earlier rule: only the
+ * first URL segment's folder was consulted.
+ */
+function nearestConfigDir(contentDir: string, filePath: string): string {
+  const root = resolve(contentDir)
+  const rel = relative(root, dirname(resolve(filePath)))
+  if (rel.startsWith('..') || isAbsolute(rel)) return ''
+  const segments = rel.split(sep).filter(Boolean)
+  for (let i = segments.length; i > 0; i--) {
+    const dir = segments.slice(0, i).join('/')
+    if (configFileMtime(join(root, dir, '_config.md')) !== -1) return dir
+  }
+  return ''
 }
 
 /**
@@ -212,23 +233,21 @@ export function resolveDirectoryConfig(contentDir: string, dirPath: string): Dir
  * @param contentPath - URL path (e.g., '/blog/my-post' or 'blog/my-post')
  * @returns 'docs' or 'blog'
  */
-export function resolveLayoutForPath(contentDir: string, contentPath: string): 'docs' | 'blog' {
-  // Normalize: strip leading slash, get directory portion
-  const normalized = contentPath.replace(/^\//, '')
-  
-  // Get the first path segment as the directory
-  const firstSegment = normalized.split('/')[0] || ''
-  
-  // Check if this segment has a _config.md
-  const config = resolveDirectoryConfig(contentDir, firstSegment)
-  return config.layout
+export function resolveLayoutForPath(contentDir: string, contentPath: string, filePath?: string): 'docs' | 'blog' {
+  return getConfigForPath(contentDir, contentPath, filePath).layout
 }
 
 /**
- * Get the full directory config for a content path
+ * Get the full directory config for a content path. Pass the resolved file
+ * path to use the nearest _config.md (numbered and nested folders included).
  */
-export function getConfigForPath(contentDir: string, contentPath: string): DirectoryConfig {
+export function getConfigForPath(contentDir: string, contentPath: string, filePath?: string): DirectoryConfig {
+  if (filePath && changeEnabled('nested-config')) {
+    return resolveDirectoryConfig(contentDir, nearestConfigDir(contentDir, filePath))
+  }
   const normalized = contentPath.replace(/^\//, '')
   const firstSegment = normalized.split('/')[0] || ''
   return resolveDirectoryConfig(contentDir, firstSegment)
 }
+
+onContentChange('config', invalidateConfigCache)

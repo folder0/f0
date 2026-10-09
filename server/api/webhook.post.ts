@@ -25,15 +25,11 @@
  */
 
 import { createHmac, timingSafeEqual } from 'crypto'
-import { invalidateNavigationCache } from '../utils/navigation'
-import { invalidateContentCache } from '../utils/cache'
-import { invalidateConfigCache } from '../utils/config'
 import { f0Config } from '../utils/f0-config'
-import { invalidateLlmsCache } from '../utils/llms-cache'
-import { invalidateBrandCache } from '../utils/brand'
 import type { H3Event } from 'h3'
 import { logger } from '../utils/logger'
 import { storage } from '../utils/storage'
+import { invalidateContentCaches } from '../utils/invalidation'
 
 // =============================================================================
 // SIGNATURE VERIFICATION
@@ -211,12 +207,9 @@ export default defineEventHandler(async (event) => {
       // Only process pushes to main/master branch
       const branch = body.ref?.replace('refs/heads/', '')
       if (branch === 'main' || branch === 'master') {
-        // Invalidate all caches
-        invalidateNavigationCache()
-        invalidateContentCache()
-        invalidateConfigCache()
-        invalidateLlmsCache()
-        invalidateBrandCache()
+        // Invalidate every content-derived cache (navigation, pages, config,
+        // brand, llms, search, sitemap ...)
+        invalidateContentCaches('webhook push')
         
         logger.info('All caches invalidated via webhook')
         

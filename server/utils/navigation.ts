@@ -42,6 +42,7 @@ import { logger } from './logger'
 import { isConfinedEntry, isConfinedPath, resolveUrlDir, sortedEntries } from './paths'
 import { MARKDOWN_EXTENSIONS, PAGE_EXTENSIONS, firstHeading, stripOrderPrefix, stripPageExtension, readFrontmatter, stringField, titleFromFileName, urlNamesFor } from './content-core'
 import { hiddenFromListings } from './drafts'
+import { onContentChange } from './invalidation'
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -615,3 +616,5 @@ export async function resolveContentPath(
   const meta = await getContentMeta(contentDir, slug)
   return meta?.path || null
 }
+
+onContentChange('navigation', invalidateNavigationCache)
