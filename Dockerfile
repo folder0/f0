@@ -47,7 +47,7 @@ COPY . .
 
 RUN mkdir -p content private /site \
  && mv content private /site/ \
- && rm -rf docs test ./*.md
+ && rm -rf docs test templates ./*.md
 
 # =============================================================================
 # builder: build the Nuxt application from app source only
