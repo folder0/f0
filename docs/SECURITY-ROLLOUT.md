@@ -73,6 +73,7 @@ Expect conflicts where the fork changed the same files (for example `server/midd
 | Health check probes `/_ready` on `127.0.0.1` | Faster, lighter probes | Use `/_ready` in any dashboard health check |
 | `/_ready` answers 503 `warming_up` until startup warm-up finishes (at most 45 seconds) | A new container takes traffic a few seconds later, but its first requests are fast | If an external monitor alerts on a single 503 from `/_ready`, give it a grace period after deploys |
 | Node.js 24 base image | None expected | Rebuild the image |
+| Nuxt 4.5 (from 3.21); local development needs Node 22.19+ or 24.11+ | Global CSS loads as one cached stylesheet instead of being inlined in every page. Pages, URLs, anchors and APIs are unchanged; the folder layout is unchanged | Forks with their own pages, components or composables: run `npm run build` and click through them after merging. See the [Nuxt 4 upgrade guide](https://nuxt.com/docs/getting-started/upgrade) for `useFetch` data defaults (`undefined` instead of `null`) and shallow data |
 
 ## 5. After deploying
 

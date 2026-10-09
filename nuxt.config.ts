@@ -3,7 +3,9 @@
  * F0 - NUXT CONFIGURATION
  * =============================================================================
  *
- * This configuration file sets up Nuxt 3 for the f0 documentation platform.
+ * This configuration file sets up Nuxt 4 for the f0 documentation platform.
+ * The pre-Nuxt-4 directory layout (pages/, components/ ... at the root) is
+ * kept on purpose: Nuxt 4 detects it, and forks merge without file moves.
  *
  * Key decisions:
  * - SSR enabled for SEO and fast initial page loads

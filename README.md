@@ -475,4 +475,4 @@ MIT
 
 ---
 
-Built with [Nuxt 3](https://nuxt.com).
+Built with [Nuxt 4](https://nuxt.com).
