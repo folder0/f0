@@ -388,6 +388,8 @@ A private site without a JWT secret refuses to start rather than run unprotected
 | `NUXT_AWS_SECRET_ACCESS_KEY` (`AWS_SECRET_ACCESS_KEY`) | — | AWS credentials for email |
 | `NUXT_EMAIL_FROM` (`EMAIL_FROM`) | — | Sender email address |
 | `NUXT_GITHUB_WEBHOOK_SECRET` (`GITHUB_WEBHOOK_SECRET`) | — | Secret for webhook signature verification |
+| `NUXT_PUBLIC_RUM` | `false` | `true` logs each visitor's Core Web Vitals (LCP, INP, CLS, FCP, TTFB) as `{"msg":"rum",...}` lines. No cookies or third parties; the library loads after the page |
+| `NUXT_PUBLIC_RUM_SAMPLE` | `1` | Share of page loads that report (0 to 1) |
 | `NUXT_DRAFTS` (`F0_DRAFTS`) | `unlisted` | `unlisted`: drafts are reachable by URL (marked noindex) but listed nowhere. `404`: drafts are not served at all |
 | `NUXT_F0_FLAGS` (`F0_FLAGS`) | — | One-release opt-outs from behavior changes, e.g. `-hide-drafts,-nested-config`. Logged at startup |
 | `NUXT_IMAGE_CACHE_DIR` (`F0_IMAGE_CACHE_DIR`) | system temp dir | Where resized image variants are stored. Point it at a volume to keep variants across deploys |

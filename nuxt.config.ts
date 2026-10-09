@@ -55,6 +55,12 @@ export default defineNuxtConfig({
       siteName: 'f0',
       siteDescription: 'Documentation',
       siteUrl: '',
+
+      // Real-user metrics (Core Web Vitals) to the server log; off unless
+      // NUXT_PUBLIC_RUM=true. NUXT_PUBLIC_RUM_SAMPLE is the share of page
+      // loads that report (0 to 1).
+      rum: false,
+      rumSample: 1,
     },
   },
 
