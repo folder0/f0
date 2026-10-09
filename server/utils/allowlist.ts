@@ -19,8 +19,8 @@
  *     "@company.com"    // Allows all emails from this domain
  *   ],
  *   "admins": [
- *     "admin@company.com"   // Optional: restricts /api/admin/* to these emails.
- *   ]                       // If omitted, any allowlisted user is treated as admin.
+ *     "admin@company.com"   // Emails allowed to use /api/admin/* (upload, audit logs).
+ *   ]                       // If omitted or empty, nobody is an admin.
  * }
  *
  * The allowlist is cached in memory and reloaded when the file changes
@@ -45,9 +45,8 @@ export interface AllowlistConfig {
   // Domain patterns (e.g., "@company.com" allows all from that domain)
   domains?: string[]
 
-  // Optional: emails permitted to access /api/admin/* endpoints.
-  // If absent/empty, every authenticated (allowlisted) user is treated as admin,
-  // preserving the historical behaviour of single-tenant private deployments.
+  // Emails permitted to access /api/admin/* endpoints (content upload, audit
+  // logs). If absent or empty, nobody is an admin.
   admins?: string[]
 }
 
@@ -189,10 +188,8 @@ export async function isEmailAllowed(
  *
  * Rules:
  * - The email must first be allowlisted for authentication at all.
- * - If the allowlist declares a non-empty `admins` array, the email must be a
- *   member of it.
- * - If no `admins` array is configured, any allowlisted user is an admin. This
- *   preserves the behaviour of existing single-tenant private deployments.
+ * - The allowlist must declare a non-empty `admins` array containing the email.
+ * - If no `admins` array is configured, nobody is an admin.
  *
  * Fails closed on any error (never grants admin on failure).
  *
@@ -213,9 +210,11 @@ export async function isEmailAdmin(
   try {
     const allowlist = await loadAllowlist(privateDir)
 
-    // No explicit admin list → any allowlisted user is an admin.
+    // No explicit admin list -> nobody is an admin. Admin endpoints can write
+    // content, so they must be granted explicitly (a domain entry would
+    // otherwise make every employee an admin).
     if (!allowlist.admins || allowlist.admins.length === 0) {
-      return true
+      return false
     }
 
     return allowlist.admins.includes(normalizedEmail)

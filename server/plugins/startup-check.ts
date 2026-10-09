@@ -21,7 +21,7 @@
  * user request is fast.
  */
 
-import { existsSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { readdir } from 'fs/promises'
 import { resolve, join } from 'path'
 import { logger } from '../utils/logger'
@@ -106,6 +106,17 @@ export default defineNitroPlugin(async () => {
     }
 
     logger.info('Private auth mode: allowlist found', { path: allowlistPath })
+
+    // Admin endpoints (upload, audit logs) need an explicit admins list.
+    try {
+      const allowlist = JSON.parse(readFileSync(allowlistPath, 'utf-8')) as { admins?: unknown }
+      if (!Array.isArray(allowlist.admins) || allowlist.admins.length === 0) {
+        logger.warn('No "admins" in allowlist.json: /api/admin/* (upload, audit logs) is disabled for everyone. Add an "admins" array to enable it.')
+      }
+    }
+    catch {
+      logger.warn('Could not parse allowlist.json to check admins', { path: allowlistPath })
+    }
   }
 
   // =========================================================================

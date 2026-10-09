@@ -12,7 +12,7 @@
  * - Markdown (.md)
  * - OpenAPI specs (.json with openapi/swagger key)
  * - Postman collections (.json with postman schema)
- * - Images (.png, .jpg, .jpeg, .gif, .svg, .webp)
+ * - Images (.png, .jpg, .jpeg, .gif, .webp); SVG is rejected (can carry script)
  * 
  * REQUEST:
  * - Content-Type: multipart/form-data
@@ -50,8 +50,9 @@ const ALLOWED_EXTENSIONS = [
   '.jpg',
   '.jpeg',
   '.gif',
-  '.svg',
   '.webp',
+  // .svg is deliberately not accepted: SVG can carry script. Add SVGs through
+  // git, where they are reviewed; they are served sandboxed (see assets route).
 ]
 
 // =============================================================================

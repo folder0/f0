@@ -33,6 +33,8 @@
 
 import { verifyToken, type JwtPayload } from '../utils/jwt'
 import { auditLog, getClientIp } from '../utils/audit'
+import { isEmailAllowed } from '../utils/allowlist'
+import { isSessionRevoked } from '../utils/sessions'
 import { logger } from '../utils/logger'
 
 // =============================================================================
@@ -46,6 +48,7 @@ const PUBLIC_ROUTES = [
   '/login',
   '/api/auth/request-otp',
   '/api/auth/verify-otp',
+  '/api/auth/logout',       // must always run so it can clear the cookie
   '/_health',
   '/_ready',
   // GitHub webhook authenticates itself via HMAC signature (see webhook.post.ts).
@@ -117,87 +120,95 @@ export default defineEventHandler(async (event) => {
   // ---------------------------------------------------------------------------
   // EXTRACT AND VERIFY TOKEN
   // ---------------------------------------------------------------------------
-  
+
+  // Build the login URL for page redirects, preserving where the user was going.
+  const loginUrl = (reason?: string): string => {
+    const params = new URLSearchParams()
+    if (path !== '/') params.set('redirect', path)
+    if (reason) params.set('reason', reason)
+    const query = params.toString()
+    return query ? `/login?${query}` : '/login'
+  }
+
+  // Reject the request: 401 for API routes, redirect to /login for pages.
+  const deny = (apiMessage: string, reason?: string, error?: string) => {
+    if (path.startsWith('/api/')) {
+      throw createError({
+        statusCode: 401,
+        statusMessage: 'Unauthorized',
+        data: error ? { message: apiMessage, error } : { message: apiMessage },
+      })
+    }
+    return sendRedirect(event, loginUrl(reason))
+  }
+
   let token: string | null = null
-  
+
   // Try Authorization header first (Bearer token)
   const authHeader = getHeader(event, 'authorization')
   if (authHeader?.startsWith('Bearer ')) {
     token = authHeader.slice(7)
   }
-  
+
   // Fall back to cookie
   if (!token) {
     token = getCookie(event, 'f0_token') || null
   }
-  
+
   // No token found
   if (!token) {
-    // For API routes, return 401
     if (path.startsWith('/api/')) {
       await auditLog(event, 'access_denied', 'anonymous', false, 'no_token', {
         path,
         method: event.method,
       })
-      
-      throw createError({
-        statusCode: 401,
-        statusMessage: 'Unauthorized',
-        data: { message: 'Authentication required' },
-      })
     }
-    
-    // For page routes, redirect to login (avoid redirect loop)
-    const redirectTo = path === '/' ? '' : `?redirect=${encodeURIComponent(path)}`
-    return sendRedirect(event, `/login${redirectTo}`)
+    return deny('Authentication required')
   }
-  
-  // Verify token
+
+  // Verify signature and expiry
   const result = verifyToken(token)
-  
-  if (!result.valid) {
-    // Clear invalid cookie
-    deleteCookie(event, 'f0_token')
-    
-    const email = result.payload?.email || 'unknown'
-    
-    // Log the token failure
+
+  if (!result.valid || !result.payload?.email) {
+    deleteCookie(event, 'f0_token', { path: '/' })
     await auditLog(
-      event, 
+      event,
       result.error === 'expired' ? 'token_expired' : 'token_invalid',
-      email,
+      result.payload?.email || 'unknown',
       false,
-      result.error,
+      result.error || 'missing_email',
       { path, method: event.method }
     )
-    
-    // For API routes, return appropriate error
-    if (path.startsWith('/api/')) {
-      throw createError({
-        statusCode: 401,
-        statusMessage: 'Unauthorized',
-        data: { 
-          message: result.error === 'expired' 
-            ? 'Session expired, please log in again' 
-            : 'Invalid authentication token',
-          error: result.error,
-        },
-      })
-    }
-    
-    // For page routes, redirect to login
-    const redirectTo = path === '/' ? '' : `?redirect=${encodeURIComponent(path)}`
-    return sendRedirect(event, `/login${redirectTo}&reason=expired`)
+    return deny(
+      result.error === 'expired' ? 'Session expired, please log in again' : 'Invalid authentication token',
+      'expired',
+      result.error,
+    )
   }
-  
+
+  // A signed token is not enough: logged-out sessions and users removed from
+  // the allowlist lose access immediately, not when the 72h token expires.
+  const { email, jti } = result.payload
+  const revoked = await isSessionRevoked(jti)
+  const stillAllowed = !revoked && await isEmailAllowed(email, config.privateDir)
+
+  if (revoked || !stillAllowed) {
+    deleteCookie(event, 'f0_token', { path: '/' })
+    await auditLog(event, 'token_invalid', email, false, revoked ? 'revoked' : 'not_allowlisted', {
+      path,
+      method: event.method,
+    })
+    return deny('Session is no longer valid, please log in again', 'expired', revoked ? 'revoked' : 'not_allowlisted')
+  }
+
   // ---------------------------------------------------------------------------
   // ATTACH USER TO CONTEXT
   // ---------------------------------------------------------------------------
-  
+
   // Store user info in event context for use in route handlers
   event.context.auth = {
     authenticated: true,
-    email: result.payload?.email,
+    email,
   }
 })
 

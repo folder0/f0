@@ -24,6 +24,7 @@
  * - For revocation needs, consider adding token ID to blacklist (future)
  */
 
+import { randomUUID } from 'crypto'
 import jwt from 'jsonwebtoken'
 import { logger } from './logger'
 
@@ -36,6 +37,7 @@ import { logger } from './logger'
  */
 export interface JwtPayload {
   email: string
+  jti?: string  // Unique session id, used to revoke the session on logout
   iat?: number  // Issued at (added by jwt.sign)
   exp?: number  // Expiry (added by jwt.sign)
 }
@@ -91,6 +93,7 @@ function getJwtSecret(): string {
 export function createToken(email: string): string {
   const payload: JwtPayload = {
     email: email.toLowerCase().trim(),
+    jti: randomUUID(),
   }
   
   const secret = getJwtSecret()

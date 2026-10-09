@@ -269,11 +269,14 @@ Add authorized emails to `/private/allowlist.json`:
 ```json
 {
   "emails": ["alice@company.com", "bob@company.com"],
-  "domains": ["company.com"]
+  "domains": ["company.com"],
+  "admins": ["alice@company.com"]
 }
 ```
 
-Configure AWS SES for email delivery. Flow: email challenge → 8-digit OTP → JWT token → access granted.
+`admins` lists who may use the admin API (content upload, audit logs). If it is missing or empty, nobody is an admin.
+
+Configure AWS SES for email delivery. Flow: email challenge → 8-digit OTP → JWT token → access granted. Logging out revokes the session immediately, and removing someone from the allowlist ends their access on their next request.
 
 ---
 

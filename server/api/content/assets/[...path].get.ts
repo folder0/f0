@@ -77,6 +77,7 @@ export default defineEventHandler(async (event) => {
       
       if (processed) {
         setHeader(event, 'Content-Type', processed.mimeType)
+        setHeader(event, 'X-Content-Type-Options', 'nosniff')
         setHeader(event, 'Content-Length', processed.buffer.length)
         setHeader(event, 'Cache-Control', 'public, max-age=604800') // 7 days for processed
         setHeader(event, 'X-Image-Processed', 'true')
@@ -98,6 +99,11 @@ export default defineEventHandler(async (event) => {
     // Set headers
     setHeader(event, 'Content-Type', mimeType)
     setHeader(event, 'Content-Length', content.length)
+    setHeader(event, 'X-Content-Type-Options', 'nosniff')
+    if (ext === '.svg') {
+      // An SVG opened directly is a document that can run script. Sandbox it.
+      setHeader(event, 'Content-Security-Policy', "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'")
+    }
     setHeader(event, 'Cache-Control', 'public, max-age=86400') // 24 hours for originals
     
     return content

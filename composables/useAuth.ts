@@ -187,8 +187,20 @@ export function useAuth() {
   /**
    * Logout user
    */
-  function logout() {
+  async function logout() {
     if (import.meta.client) {
+      // End the session on the server: revokes the token and clears the
+      // httpOnly cookie. Ignore failures so logout never gets stuck.
+      const stored = localStorage.getItem('f0_token')
+      try {
+        await $fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: stored ? { Authorization: `Bearer ${stored}` } : undefined,
+        })
+      }
+      catch {
+        // fall through to local cleanup
+      }
       localStorage.removeItem('f0_token')
     }
     
