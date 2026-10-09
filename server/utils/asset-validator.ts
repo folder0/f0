@@ -18,7 +18,7 @@
 import { existsSync } from 'fs'
 import { join, resolve, dirname } from 'path'
 import { logger } from './logger'
-import { resolveAssetUrl } from './content-core'
+import { blankOutCode, resolveAssetUrl } from './content-core'
 
 // =============================================================================
 // TYPES
@@ -49,8 +49,10 @@ export interface AssetValidationResult {
  * Extract all image references from raw Markdown content.
  * Supports standard Markdown images and HTML img tags.
  */
-export function extractImageReferences(markdown: string): string[] {
+export function extractImageReferences(source: string): string[] {
   const refs: string[] = []
+  // Examples in code blocks and inline code are not images on the page
+  const markdown = blankOutCode(source)
 
   // Standard Markdown: ![alt](src)
   const mdImageRegex = /!\[[^\]]*\]\(([^)]+)\)/g

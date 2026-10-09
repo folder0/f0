@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  blankOutCode,
   fileToUrlPath,
   firstHeading,
   isDraft,
@@ -138,5 +139,18 @@ describe('resolveAssetUrl', () => {
     ['./assets/../../x.png', './assets/../../x.png'],
   ])('%s → %s', (input, output) => {
     expect(resolveAssetUrl(input)).toBe(output)
+  })
+})
+
+describe('blankOutCode', () => {
+  it('blanks fenced and inline code but keeps positions', () => {
+    const source = 'Text ![a](x.png)\n```md\n![b](y.png)\n```\nand `![c](z.png)` end'
+    const blanked = blankOutCode(source)
+    expect(blanked.length).toBe(source.length)
+    expect(blanked.split('\n').length).toBe(source.split('\n').length)
+    expect(blanked).toContain('![a](x.png)')
+    expect(blanked).not.toContain('y.png')
+    expect(blanked).not.toContain('z.png')
+    expect(blanked).toContain(' end')
   })
 })

@@ -214,3 +214,30 @@ export function resolveAssetUrl(value: string): string {
   if (relative.split('/').includes('..')) return src
   return '/api/content/assets/' + relative.replace(/^assets\//, '')
 }
+
+// =============================================================================
+// CODE
+// =============================================================================
+
+/**
+ * The document with fenced code blocks and inline code replaced by spaces
+ * (newlines kept, so offsets and line numbers still match the source). For
+ * checks that must ignore examples, such as image validation.
+ */
+export function blankOutCode(markdown: string): string {
+  const lines = markdown.split('\n')
+  let fence: string | null = null
+  const out = lines.map((line) => {
+    const marker = line.match(/^[ \t]*(`{3,}|~{3,})/)?.[1]
+    if (fence) {
+      if (marker && marker[0] === fence[0] && marker.length >= fence.length && !line.trim().slice(marker.length).trim()) fence = null
+      return ' '.repeat(line.length)
+    }
+    if (marker) {
+      fence = marker
+      return ' '.repeat(line.length)
+    }
+    return line
+  })
+  return out.join('\n').replace(/(`+)[^`\n]*?\1/g, match => ' '.repeat(match.length))
+}

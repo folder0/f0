@@ -33,7 +33,7 @@
 import { readdir, readFile, stat } from 'fs/promises'
 import { existsSync, readdirSync } from 'fs'
 import { join, resolve, extname, basename, dirname, relative } from 'path'
-import { fileToUrlPath, firstHeading, readFrontmatter, stringField, urlNamesFor } from '../server/utils/content-core.ts'
+import { blankOutCode, fileToUrlPath, firstHeading, readFrontmatter, stringField, urlNamesFor } from '../server/utils/content-core.ts'
 
 // =============================================================================
 // COLORS (ANSI escape codes)
@@ -75,6 +75,8 @@ function extractFrontmatter(content) {
  * Extract image references from markdown content.
  */
 function extractImageRefs(content) {
+  // Examples in code blocks and inline code are not images on the page
+  content = blankOutCode(content)
   const refs = []
   const mdRegex = /!\[[^\]]*\]\(([^)]+)\)/g
   let m
@@ -359,7 +361,8 @@ async function validate(contentDir) {
     }
 
     // Title resolution check
-    const headings = extractHeadings(mdContent)
+    // Lines inside code blocks (bash comments, Markdown examples) are not headings
+    const headings = extractHeadings(blankOutCode(mdContent))
     const h1 = headings.find(h => h.level === 1)
     const fmTitle = stringField(frontmatter ?? {}, 'title')
     if (!fmTitle && !h1 && !firstHeading(mdContent)) {
