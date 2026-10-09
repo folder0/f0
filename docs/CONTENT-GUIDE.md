@@ -67,7 +67,7 @@ draft: false
 | `title` | No | Page title (defaults to first H1) |
 | `description` | No | Meta description for SEO |
 | `order` | No | Sort order (lower = first) |
-| `draft` | No | If true, page is hidden |
+| `draft` | No | `true` (or `yes`/`on`) keeps the page out of the sidebar, search, sitemap, `llms.txt` and blog listings. It stays reachable at its URL with a Draft notice and `noindex`, unless `F0_DRAFTS=404` is set |
 
 ### Ordering Content
 
@@ -535,7 +535,7 @@ Remember f0 serves three audiences:
 - Check file is in `/content` directory
 - Verify filename ends in `.md`
 - Check frontmatter YAML is valid
-- Ensure `draft: true` is not set
+- Ensure `draft` is not set to `true`, `yes` or `on`
 
 ### Broken Images
 

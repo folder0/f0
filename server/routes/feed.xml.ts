@@ -23,6 +23,7 @@ import {
 import { resolveDirectoryConfig, defaultDirectoryConfig } from '../utils/config'
 import { f0Config } from '../utils/f0-config'
 import { resolvePageTitle } from '../utils/content-core'
+import { hiddenFromListings } from '../utils/drafts'
 
 /**
  * Escape XML special characters
@@ -86,7 +87,7 @@ export default defineEventHandler(async (event) => {
       const rawContent = await readFile(filePath, 'utf-8')
       const { frontmatter, content: bodyContent } = extractFrontmatter(rawContent)
 
-      if (frontmatter.draft === true) continue
+      if (hiddenFromListings(frontmatter, 'blog')) continue
 
       const cleanName = basename(entry.name, extname(entry.name))
         .replace(/^\d{4}-\d{2}-\d{2}-/, '')

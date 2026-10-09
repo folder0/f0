@@ -15,6 +15,7 @@ import { logger } from '../../utils/logger'
 import { resolveContentSubdir } from '../../utils/paths'
 import { extractFrontmatter, isMarkdownFile } from '../../utils/markdown'
 import { f0Config } from '../../utils/f0-config'
+import { hiddenFromListings } from '../../utils/drafts'
 
 interface TagInfo {
   name: string
@@ -51,7 +52,7 @@ export default defineEventHandler(async (event) => {
       const rawContent = await readFile(filePath, 'utf-8')
       const { frontmatter } = extractFrontmatter(rawContent)
 
-      if (frontmatter.draft === true) continue
+      if (hiddenFromListings(frontmatter, 'blog')) continue
 
       const tags = Array.isArray(frontmatter.tags)
         ? (frontmatter.tags as string[]).map(t => String(t).toLowerCase())

@@ -41,6 +41,7 @@ import { parseMarkdown, isMarkdownFile, isJsonSpecFile } from './markdown'
 import { logger } from './logger'
 import { isConfinedEntry, isConfinedPath, resolveUrlDir, sortedEntries } from './paths'
 import { MARKDOWN_EXTENSIONS, PAGE_EXTENSIONS, firstHeading, stripOrderPrefix, stripPageExtension, readFrontmatter, stringField, titleFromFileName, urlNamesFor } from './content-core'
+import { hiddenFromListings } from './drafts'
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -244,7 +245,7 @@ function ensureLeadingSlash(path: string): string {
 /**
  * Get title from markdown file (frontmatter > h1 > filename)
  */
-async function getTitleFromMarkdown(filePath: string): Promise<{ title: string; order: number | null }> {
+async function getTitleFromMarkdown(filePath: string): Promise<{ title: string; order: number | null; hidden?: boolean }> {
   try {
     const doc = readFrontmatter(await readFile(filePath, 'utf-8'))
     
@@ -254,6 +255,7 @@ async function getTitleFromMarkdown(filePath: string): Promise<{ title: string; 
       return {
         title: stringField(doc.data, 'title') ?? cleanFilename(filePath),
         order: typeof doc.data.order === 'number' ? doc.data.order : null,
+        hidden: hiddenFromListings(doc.data, 'site'),
       }
     }
     
@@ -359,7 +361,8 @@ async function scanDirectory(
         }
       } else if (isMarkdownFile(entry.name) && await isConfinedEntry(dirPath, entry, contentDir)) {
         // Parse markdown file for metadata
-        const { title, order: frontmatterOrder } = await getTitleFromMarkdown(entryPath)
+        const { title, order: frontmatterOrder, hidden } = await getTitleFromMarkdown(entryPath)
+        if (hidden) continue // drafts are reachable by URL but not listed
         const filenameOrder = extractOrderFromFilename(entry.name)
         
         items.push({

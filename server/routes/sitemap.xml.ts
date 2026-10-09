@@ -14,7 +14,7 @@
  * Cached using content-hash invalidation (same as /llms.txt).
  */
 
-import { readdir, stat } from 'fs/promises'
+import { readdir, stat, readFile } from 'fs/promises'
 import { join, relative, resolve } from 'path'
 import { isMarkdownFile, isJsonSpecFile } from '../utils/markdown'
 import { resolveLayoutForPath } from '../utils/config'
@@ -22,7 +22,8 @@ import { logger } from '../utils/logger'
 import { isConfinedEntry } from '../utils/paths'
 import { createHash } from 'crypto'
 import { f0Config } from '../utils/f0-config'
-import { fileToUrlPath } from '../utils/content-core'
+import { fileToUrlPath, readFrontmatter } from '../utils/content-core'
+import { hiddenFromListings } from '../utils/drafts'
 
 // =============================================================================
 // TYPES
@@ -73,6 +74,12 @@ async function collectPages(
         // Canonical URL, as linked from the sidebar (01-guides/02-setup.md →
         // /guides/setup, guides/index.md → /guides, home.md → /)
         const pagePath = fileToUrlPath(relative(contentDir, fullPath))
+
+        // Drafts are not advertised to crawlers
+        if (isMarkdownFile(entry.name)) {
+          const doc = readFrontmatter(await readFile(fullPath, 'utf-8').catch(() => ''))
+          if (hiddenFromListings(doc.data, 'site')) continue
+        }
 
         // Get file stats for lastmod
         let lastmod: string

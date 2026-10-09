@@ -519,7 +519,7 @@ Hide work-in-progress posts from the blog index:
 draft: true
 ```
 
-Draft posts don't appear in the blog listing, sidebar, RSS feed, or tag counts. They're still accessible by direct URL if you know the path — useful for sharing previews.
+Draft posts don't appear in the blog listing, sidebar, search, sitemap, `llms.txt`, RSS feed, or tag counts. They're still accessible by direct URL if you know the path — useful for sharing previews — with a Draft notice and a `noindex` tag so search engines skip them. `draft: yes` and `draft: on` work too. Set `F0_DRAFTS=404` to hide drafts completely.
 
 ### 2.11 — RSS Feed
 

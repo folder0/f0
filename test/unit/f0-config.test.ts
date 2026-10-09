@@ -78,4 +78,18 @@ describe('resolveF0Config', () => {
     expect(warnings).toMatch(/shorter than 32/)
     expect(warnings).toMatch(/SES/)
   })
+
+  it('reads the drafts mode', () => {
+    expect(prod({}).drafts).toBe('unlisted')
+    expect(prod({ F0_DRAFTS: '404' }).drafts).toBe('404')
+    expect(prod({ NUXT_DRAFTS: 'hidden' }).warnings.join()).toMatch(/F0_DRAFTS/)
+  })
+
+  it('reads one-release opt-outs from F0_FLAGS and warns about them', () => {
+    const config = prod({ F0_FLAGS: '-hide-drafts, -nested-config' })
+    expect(config.disabledChanges).toEqual(['hide-drafts', 'nested-config'])
+    expect(config.warnings.filter(w => /switched off/.test(w))).toHaveLength(2)
+    expect(prod({ F0_FLAGS: 'hide-drafts,-unknown' }).disabledChanges).toEqual([])
+    expect(prod({ F0_FLAGS: '-unknown' }).warnings.join()).toMatch(/not recognised/)
+  })
 })

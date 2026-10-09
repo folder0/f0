@@ -30,6 +30,7 @@ import { logger } from '../utils/logger'
 import { isConfinedEntry } from '../utils/paths'
 import { f0Config } from '../utils/f0-config'
 import { fileToUrlPath, readFrontmatter, resolvePageTitle, titleFromFileName } from '../utils/content-core'
+import { hiddenFromListings } from '../utils/drafts'
 
 /**
  * Count non-overlapping occurrences of `needle` in `haystack`.
@@ -102,16 +103,20 @@ async function buildContentIndex(contentDir: string): Promise<ContentItem[]> {
             let title: string
             let plainContent: string
             
+            let frontmatter: Record<string, unknown>
             try {
               const cached = await getCachedContent(fullFilePath)
               title = cached.title
               plainContent = cached.plainText
+              frontmatter = cached.frontmatter
             } catch {
               // Fallback to lightweight extraction if cache fails
               const doc = readFrontmatter(await readFile(fullPath, 'utf-8'))
               title = resolvePageTitle(doc, entry.name)
               plainContent = markdownToPlainTextSimple(doc.body)
+              frontmatter = doc.data
             }
+            if (hiddenFromListings(frontmatter, 'site')) continue
             
             // Same URL rules as the sidebar (dated posts used to get /blog/02-11-x)
             const urlPath = fileToUrlPath(relative(contentDir, fullPath))

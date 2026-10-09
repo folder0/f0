@@ -28,6 +28,7 @@ import { resolveContentSubdir } from '../../utils/paths'
 import { logger } from '../../utils/logger'
 import { f0Config } from '../../utils/f0-config'
 import { resolvePageTitle } from '../../utils/content-core'
+import { hiddenFromListings } from '../../utils/drafts'
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -88,8 +89,8 @@ async function scanBlogPosts(
       const rawContent = await readFile(filePath, 'utf-8')
       const { frontmatter, content: bodyContent } = extractFrontmatter(rawContent)
 
-      // Skip drafts
-      if (frontmatter.draft === true) continue
+      // Skip drafts (draft: true, yes or on)
+      if (hiddenFromListings(frontmatter, 'blog')) continue
 
       // Resolve title
       const cleanName = basename(entry.name, extname(entry.name))

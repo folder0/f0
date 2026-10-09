@@ -35,7 +35,8 @@ import { logger } from '../utils/logger'
 import { isConfinedEntry } from '../utils/paths'
 import { markdownToPlainText, isMarkdownFile } from '../utils/markdown'
 import { f0Config } from '../utils/f0-config'
-import { stripOrderPrefix } from '../utils/content-core'
+import { readFrontmatter, stripOrderPrefix } from '../utils/content-core'
+import { hiddenFromListings } from '../utils/drafts'
 
 // =============================================================================
 // TYPES
@@ -96,9 +97,17 @@ async function scanSections(contentDir: string): Promise<Map<string, SectionInfo
           totalPages += childStats.pages
           totalTokens += childStats.tokens
         } else if (isMarkdownFile(entry.name) && await isConfinedEntry(dir, entry, contentDir)) {
+          let content: string
+          try {
+            content = await readFile(fullPath, 'utf-8')
+          } catch {
+            totalPages++
+            totalTokens += 250 // Fallback estimate
+            continue
+          }
+          if (hiddenFromListings(readFrontmatter(content).data, 'site')) continue
           totalPages++
           try {
-            const content = await readFile(fullPath, 'utf-8')
             // Rough token estimate: ~4 chars per token for English
             const plainText = markdownToPlainText(content)
             totalTokens += Math.ceil(plainText.length / 4)
@@ -148,6 +157,10 @@ async function scanSections(contentDir: string): Promise<Map<string, SectionInfo
         rootPages++
         try {
           const content = await readFile(join(contentDir, entry.name), 'utf-8')
+          if (hiddenFromListings(readFrontmatter(content).data, 'site')) {
+            rootPages--
+            continue
+          }
           rootTokens += Math.ceil(markdownToPlainText(content).length / 4)
         } catch {
           rootTokens += 250

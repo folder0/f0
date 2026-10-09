@@ -43,6 +43,7 @@ import { resolveLayoutForPath } from './config'
 import { logger } from './logger'
 import { isConfinedEntry } from './paths'
 import { readFrontmatter, resolvePageTitle } from './content-core'
+import { hiddenFromListings } from './drafts'
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -123,6 +124,7 @@ async function collectContent(
         try {
           const rawContent = await readFile(entryPath, 'utf-8')
           const doc = readFrontmatter(rawContent)
+          if (hiddenFromListings(doc.data, 'site')) continue
           
           // Use safe plain text extraction
           let plainText: string

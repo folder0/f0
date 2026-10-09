@@ -33,6 +33,11 @@
     
     <!-- Content -->
     <article v-else class="content">
+      <!-- Drafts are reachable by URL only: say so to whoever has the link -->
+      <p v-if="content?.draft" class="draft-banner" role="note">
+        Draft: this page is not listed in navigation, search or the sitemap, and search engines are asked not to index it.
+      </p>
+
       <!-- Blog post layout -->
       <BlogPostLayout
         v-if="content?.layout === 'blog' && content?.type === 'markdown'"
@@ -82,6 +87,7 @@ interface ContentResponse {
   markdown?: string  // Raw markdown for copy feature
   path?: string      // Page path for download feature
   layout?: 'docs' | 'blog'
+  draft?: boolean
   blog?: {
     date: string
     author: string
@@ -163,7 +169,13 @@ useSeo(() => ({
   publishedTime: content.value?.blog?.date,
   author: content.value?.blog?.author,
   tags: content.value?.blog?.tags,
+  noIndex: content.value?.draft === true,
 }))
+
+// Drafts also carry the header form, for crawlers that skip meta tags
+if (import.meta.server && content.value?.draft) {
+  useResponseHeader('X-Robots-Tag').value = 'noindex'
+}
 
 // ---------------------------------------------------------------------------
 // TOC INJECTION
@@ -189,6 +201,15 @@ watch(content, (newContent) => {
 <style scoped>
 .doc-page {
   min-height: 400px;
+}
+
+.draft-banner {
+  margin: 0 0 var(--spacing-6, 1.5rem);
+  padding: var(--spacing-3, 0.75rem) var(--spacing-4, 1rem);
+  border-left: 3px solid var(--color-warning);
+  border-radius: 6px;
+  background-color: var(--color-warning-bg);
+  font-size: 0.875rem;
 }
 
 .loading {

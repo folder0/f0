@@ -41,6 +41,13 @@ export interface F0Config {
   githubWebhookSecret: string
   /** Where resized image variants are written (never inside contentDir). */
   imageCacheDir: string
+  /**
+   * Drafts: 'unlisted' (default) serves a draft at its URL, marked noindex,
+   * but lists it nowhere; '404' hides it completely (strict wikis).
+   */
+  drafts: 'unlisted' | '404'
+  /** Behavior changes switched off with F0_FLAGS=-name (one release only). */
+  disabledChanges: ChangeName[]
   /** Misconfigurations that must stop the site from serving (fail closed). */
   problems: string[]
   /** Settings that work but deserve attention. */
@@ -48,6 +55,16 @@ export interface F0Config {
 }
 
 type Env = Record<string, string | undefined>
+
+/**
+ * Behavior changes that ship on by default with a one-release opt-out:
+ * F0_FLAGS=-hide-drafts,-nested-config. Security fixes are never listed here.
+ */
+export const CHANGES = {
+  'hide-drafts': 'Drafts (draft: true/yes/on) are left out of the sidebar, sitemap, llms.txt and search',
+  'nested-config': 'A page uses the nearest _config.md above it, not only its top-level folder',
+} as const
+export type ChangeName = keyof typeof CHANGES
 
 /** The JWT secret shipped as a placeholder in earlier versions. */
 const PLACEHOLDER_JWT_SECRET = 'change-me-in-production'
@@ -114,6 +131,23 @@ export function resolveF0Config(env: Env = process.env): F0Config {
 
   const f0Mode = read(env, 'NUXT_F0_MODE', 'F0_MODE').toLowerCase() === 'blog' ? 'blog' : 'docs'
 
+  const draftsSetting = read(env, 'NUXT_DRAFTS', 'F0_DRAFTS').toLowerCase()
+  const drafts = draftsSetting === '404' ? '404' : 'unlisted'
+  if (draftsSetting && draftsSetting !== '404' && draftsSetting !== 'unlisted') {
+    warnings.push(`F0_DRAFTS "${draftsSetting}" is not "unlisted" or "404"; using "unlisted"`)
+  }
+
+  const disabledChanges: ChangeName[] = []
+  for (const flag of read(env, 'NUXT_F0_FLAGS', 'F0_FLAGS').split(',').map(f => f.trim()).filter(Boolean)) {
+    const name = flag.replace(/^-/, '')
+    if (!flag.startsWith('-') || !(name in CHANGES)) {
+      warnings.push(`F0_FLAGS entry "${flag}" is not recognised; known opt-outs: ${Object.keys(CHANGES).map(c => `-${c}`).join(', ')}`)
+      continue
+    }
+    disabledChanges.push(name as ChangeName)
+    warnings.push(`F0_FLAGS: "${name}" is switched off (${CHANGES[name as ChangeName]}). This opt-out is removed in the next release.`)
+  }
+
   return {
     authMode,
     authModeSource: (authModeSetting.name || 'default') as F0Config['authModeSource'],
@@ -127,6 +161,8 @@ export function resolveF0Config(env: Env = process.env): F0Config {
     f0Mode,
     githubWebhookSecret: read(env, 'NUXT_GITHUB_WEBHOOK_SECRET', 'GITHUB_WEBHOOK_SECRET'),
     imageCacheDir: read(env, 'NUXT_IMAGE_CACHE_DIR', 'F0_IMAGE_CACHE_DIR') || join(tmpdir(), 'f0-image-cache'),
+    drafts,
+    disabledChanges,
     problems,
     warnings,
   }
@@ -138,4 +174,9 @@ let resolved: F0Config | null = null
 export function f0Config(): F0Config {
   if (!resolved) resolved = Object.freeze(resolveF0Config()) as F0Config
   return resolved
+}
+
+/** False when this process opted out of a behavior change via F0_FLAGS. */
+export function changeEnabled(name: ChangeName): boolean {
+  return !f0Config().disabledChanges.includes(name)
 }

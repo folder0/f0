@@ -31,7 +31,7 @@ import { resolveContentPath } from '../../../utils/navigation'
 import { logger } from '../../../utils/logger'
 import { hasHiddenSegment } from '../../../utils/paths'
 import { f0Config } from '../../../utils/f0-config'
-import { readFrontmatter, resolvePageTitle } from '../../../utils/content-core'
+import { isDraft, readFrontmatter, resolvePageTitle } from '../../../utils/content-core'
 
 /** Percent-encode everything outside printable ASCII so the value is a valid header. */
 function headerSafe(value: string): string {
@@ -81,9 +81,16 @@ export default defineEventHandler(async (event) => {
     
     // Read raw content
     const content = await readFile(filePath, 'utf-8')
+    const doc = readFrontmatter(content)
+    if (isDraft(doc.data)) {
+      if (settings.drafts === '404') {
+        throw createError({ statusCode: 404, statusMessage: 'Not Found' })
+      }
+      setHeader(event, 'X-Robots-Tag', 'noindex')
+    }
     
     // Same title rule as the page: frontmatter title, then first H1, then file name
-    const title = resolvePageTitle(readFrontmatter(content), basename(filePath))
+    const title = resolvePageTitle(doc, basename(filePath))
     
     // Calculate word count (rough estimate)
     const wordCount = content.split(/\s+/).length

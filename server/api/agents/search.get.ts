@@ -55,6 +55,7 @@ import { logger } from '../../utils/logger'
 import { isConfinedEntry } from '../../utils/paths'
 import { f0Config } from '../../utils/f0-config'
 import { fileToUrlPath, readFrontmatter, resolvePageTitle, titleFromFileName } from '../../utils/content-core'
+import { hiddenFromListings } from '../../utils/drafts'
 
 /**
  * Count non-overlapping occurrences of `needle` in `haystack`.
@@ -135,6 +136,7 @@ async function buildContentIndex(contentDir: string): Promise<ContentItem[]> {
           try {
             const rawContent = await readFile(fullPath, 'utf-8')
             const doc = readFrontmatter(rawContent)
+            if (hiddenFromListings(doc.data, 'site')) continue
             const mdContent = doc.body
             
             // Same URL and title rules as the sidebar and the page itself

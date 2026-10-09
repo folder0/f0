@@ -27,6 +27,7 @@ import { getCachedContent } from '../../utils/cache'
 import { logger } from '../../utils/logger'
 import { hasHiddenSegment } from '../../utils/paths'
 import { f0Config } from '../../utils/f0-config'
+import { isDraft } from '../../utils/content-core'
 
 export default defineEventHandler(async (event) => {
   const settings = f0Config()
@@ -71,6 +72,16 @@ export default defineEventHandler(async (event) => {
       // Use mtime-based cache — stat() + Map lookup on hit, full pipeline on miss
       const cached = await getCachedContent(filePath)
       
+      // Drafts: served at their URL but marked noindex, or hidden entirely
+      // with F0_DRAFTS=404
+      const draft = isDraft(cached.frontmatter)
+      if (draft && settings.drafts === '404') {
+        throw createError({ statusCode: 404, statusMessage: 'Not Found' })
+      }
+      if (draft) {
+        setHeader(event, 'X-Robots-Tag', 'noindex')
+      }
+      
       // Determine layout
       const layout = resolveLayoutForPath(settings.contentDir, contentSlug)
       
@@ -84,6 +95,7 @@ export default defineEventHandler(async (event) => {
         markdown: cached.rawMarkdown,
         path: `/${contentSlug}`,
         layout,
+        draft,
       }
       
       // Add blog metadata when layout is blog
