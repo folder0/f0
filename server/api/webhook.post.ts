@@ -80,30 +80,55 @@ function verifySignature(
 const MAX_WEBHOOK_BODY_BYTES = 1024 * 1024   // GitHub push payloads are far smaller
 const DELIVERY_DEDUPE_SECONDS = 10 * 60
 
-/** Read the request body as UTF-8, failing with 413 once it exceeds maxBytes. */
-async function readBodyCapped(event: H3Event, maxBytes: number): Promise<string> {
+/**
+ * Read the request body as UTF-8, failing with 413 once it exceeds maxBytes.
+ *
+ * Reads the Node request directly: cancelling h3's web stream mid-body raised
+ * an uncaught exception for chunked uploads. On overflow the rest of the body
+ * is discarded unbuffered and the connection closes after the 413.
+ */
+function readBodyCapped(event: H3Event, maxBytes: number): Promise<string> {
   const declared = Number(getHeader(event, 'content-length') || 0)
   if (declared > maxBytes) {
+    setResponseHeader(event, 'Connection', 'close')
     throw createError({ statusCode: 413, statusMessage: 'Payload Too Large' })
   }
 
-  const stream = getRequestWebStream(event)
-  if (!stream) return ''
+  const req = event.node.req
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    let size = 0
 
-  const reader = stream.getReader()
-  const chunks: Uint8Array[] = []
-  let size = 0
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    size += value.byteLength
-    if (size > maxBytes) {
-      await reader.cancel()
-      throw createError({ statusCode: 413, statusMessage: 'Payload Too Large' })
+    const cleanup = () => {
+      req.off('data', onData)
+      req.off('end', onEnd)
+      req.off('error', onError)
     }
-    chunks.push(value)
-  }
-  return Buffer.concat(chunks).toString('utf8')
+    const onData = (chunk: Buffer) => {
+      size += chunk.length
+      if (size > maxBytes) {
+        cleanup()
+        // Keep the stream flowing with no listener so the remainder is dropped.
+        req.resume()
+        setResponseHeader(event, 'Connection', 'close')
+        reject(createError({ statusCode: 413, statusMessage: 'Payload Too Large' }))
+        return
+      }
+      chunks.push(chunk)
+    }
+    const onEnd = () => {
+      cleanup()
+      resolve(Buffer.concat(chunks).toString('utf8'))
+    }
+    const onError = (error: Error) => {
+      cleanup()
+      reject(createError({ statusCode: 400, statusMessage: 'Bad Request', data: { message: error.message } }))
+    }
+
+    req.on('data', onData)
+    req.on('end', onEnd)
+    req.on('error', onError)
+  })
 }
 
 // =============================================================================

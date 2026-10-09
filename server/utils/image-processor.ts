@@ -54,11 +54,17 @@ const SUPPORTED_FORMATS = ['webp', 'avif', 'jpeg', 'jpg', 'png'] as const
 
 // Requested sizes and qualities snap UP to these steps, so each source image
 // has a bounded number of variants (unbounded ?w/?h/?q values were a CPU and
-// disk exhaustion vector). The widths cover every size f0 itself emits.
-const SIZE_STEPS = [96, 160, 192, 320, 400, 800, 1200, 1600, 2400]
-const QUALITY_STEPS = [60, 75, 80, 85, 90]
-const MAX_WIDTH = SIZE_STEPS[SIZE_STEPS.length - 1]
-const MAX_HEIGHT = SIZE_STEPS[SIZE_STEPS.length - 1]
+// disk exhaustion vector). The widths cover every size f0 itself emits, and the
+// caps match the limits that applied before snapping (3840 wide, 2160 high,
+// quality up to 100), so no URL that worked before gets a smaller image.
+//
+// Width and height snap independently. With fit: 'inside' the result is never
+// smaller than requested; deriving one from the other would make the variant
+// count unbounded again.
+const SIZE_STEPS = [96, 160, 192, 320, 400, 800, 1200, 1600, 2400, 3840]
+const QUALITY_STEPS = [60, 75, 80, 85, 90, 95, 100]
+const MAX_WIDTH = 3840
+const MAX_HEIGHT = 2160
 const DEFAULT_QUALITY = 80
 
 /** Smallest step >= value, or the largest step when value exceeds them all. */
@@ -225,7 +231,7 @@ export function parseImageOptions(query: Record<string, unknown>): ImageOptions 
 
   if (h) {
     const height = parseInt(String(h), 10)
-    if (height > 0) options.height = snapUp(height, SIZE_STEPS)
+    if (height > 0) options.height = Math.min(snapUp(height, SIZE_STEPS), MAX_HEIGHT)
   }
 
   if (f) {

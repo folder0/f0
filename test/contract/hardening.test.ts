@@ -121,6 +121,28 @@ describe('webhook', () => {
     expect(response.status).toBe(413)
   })
 
+  it('rejects a chunked body over 1MB with 413 and keeps running', async () => {
+    const status = await new Promise<number>((resolveStatus, reject) => {
+      const req = request(`${server.url}/api/webhook`, {
+        method: 'POST',
+        headers: { 'x-github-event': 'push', 'x-hub-signature-256': 'sha256=00', 'content-type': 'application/json' },
+      }, (res) => {
+        res.resume()
+        resolveStatus(res.statusCode ?? 0)
+      })
+      req.on('error', (error) => {
+        // The server may close the socket while we are still writing.
+        if ((error as NodeJS.ErrnoException).code !== 'EPIPE' && (error as NodeJS.ErrnoException).code !== 'ECONNRESET') reject(error)
+      })
+      const chunk = 'x'.repeat(64 * 1024)
+      for (let i = 0; i < 40; i++) req.write(chunk) // 2.5MB, no content-length
+      req.end()
+    })
+    expect(status).toBe(413)
+    expect((await get(`${server.url}/_health`)).status).toBe(200)
+    expect(server.output()).not.toMatch(/uncaught|unhandled/i)
+  })
+
   it('processes a delivery once and ignores redelivery of the same id', async () => {
     const body = JSON.stringify({ ref: 'refs/heads/main' })
     const send = () => get(`${server.url}/api/webhook`, {

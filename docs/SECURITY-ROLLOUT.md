@@ -48,6 +48,8 @@ npm test
 npm run build && npm run test:contract
 ```
 
+**If `git ls-files '.env*'` lists a committed `.env`, stop before deploying.** Docker builds no longer read it (see the `.env` row in section 4), so the site would come up with defaults, which means **public**. Move its settings into the site's environment first.
+
 Expect conflicts where the fork changed the same files (for example `server/middleware/auth.ts`, `server/utils/markdown.ts`, `assets/css/main.css`). Keep the fork's intentional changes and this release's security changes. If a fork has engine improvements that every site would want, send them upstream to f0.
 
 ## 4. Behaviour that changes with this release
@@ -62,8 +64,9 @@ Expect conflicts where the fork changed the same files (for example `server/midd
 | Files and folders starting with `_` or `.` return 404 as pages | `/blog/_config` no longer shows the config file | None |
 | Raw HTML in Markdown is sanitized | `<script>`, `on*=` handlers, `javascript:` links, `<iframe srcdoc>`, `<object>`, `<embed>`, `<base>`, `<meta>`, `<link>` are removed from rendered pages | Move any intentional scripts out of content |
 | SVG uploads through the admin API are rejected | Upload of `.svg` returns 400 | Add SVGs through git |
-| Image `?w=`, `?h=` and `?q=` snap to fixed steps | `?w=500` serves 800px; `?q=81` serves quality 85 | None for documented sizes (400, 800, 1200 and quality 80 are unchanged) |
+| Image `?w=`, `?h=` and `?q=` snap to fixed steps | `?w=500` serves 800px; `?q=81` serves quality 85 | None for documented sizes (400, 800, 1200 and quality 80 are unchanged). Old caps are kept: up to 3840 wide, 2160 high, quality 100 |
 | `accent_color` must be a valid CSS colour | An invalid value is ignored and logged | Quote hex values: `accent_color: "#2563eb"` |
+| Docker builds ignore `.env` and `.env.*` (`.dockerignore`) | A fork that kept `AUTH_MODE=private` or other settings in a committed `.env` comes up with defaults: **public**, no email, no site URL. The startup log line `f0 startup validation complete` shows the `authMode` actually in effect | Before deploying, set every value from that `.env` in the site's environment with `NUXT_` names (see step 1), deploy, then rerun the step 1 check. Treat the committed values as leaked (step 2) and remove the file from git |
 | Health check probes `/_ready` on `127.0.0.1` | Faster, lighter probes | Use `/_ready` in any dashboard health check |
 | Node.js 24 base image | None expected | Rebuild the image |
 

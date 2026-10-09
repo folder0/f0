@@ -109,12 +109,21 @@ export async function startServer({ site, authMode = 'public', env = {} }: Serve
   const child = spawn(process.execPath, [SERVER_ENTRY], { env: childEnv, stdio: ['ignore', 'pipe', 'pipe'] })
   child.stdout.on('data', (chunk) => { output += chunk })
   child.stderr.on('data', (chunk) => { output += chunk })
+  // Track exit from the start: a child killed by a signal has exitCode null,
+  // and a listener added after the fact would wait forever.
+  let exited = false
+  const exit = new Promise<void>((done) => {
+    child.once('exit', () => {
+      exited = true
+      done()
+    })
+  })
 
   const url = `http://127.0.0.1:${port}`
   const deadline = Date.now() + 20_000
   for (;;) {
-    if (child.exitCode !== null) {
-      throw new Error(`Server exited with code ${child.exitCode} before becoming healthy:\n${output}`)
+    if (exited) {
+      throw new Error(`Server exited (${child.exitCode ?? child.signalCode}) before becoming healthy:\n${output}`)
     }
     try {
       const response = await fetch(`${url}/_health`)
@@ -125,6 +134,7 @@ export async function startServer({ site, authMode = 'public', env = {} }: Serve
     }
     if (Date.now() > deadline) {
       child.kill('SIGKILL')
+      await exit
       throw new Error(`Server did not become healthy within 20s:\n${output}`)
     }
     await new Promise(r => setTimeout(r, 100))
@@ -133,11 +143,13 @@ export async function startServer({ site, authMode = 'public', env = {} }: Serve
   return {
     url,
     output: () => output,
-    stop: () => new Promise<void>((done) => {
-      if (child.exitCode !== null) return done()
-      child.once('exit', () => done())
+    stop: async () => {
+      if (exited) return
       child.kill('SIGTERM')
-    }),
+      const timer = setTimeout(() => child.kill('SIGKILL'), 5_000)
+      await exit
+      clearTimeout(timer)
+    },
   }
 }
 

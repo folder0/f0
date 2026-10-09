@@ -44,14 +44,23 @@ describe('parseImageOptions', () => {
   it('snaps sizes up to the allowed steps and caps them', () => {
     expect(parseImageOptions({ w: '500' })).toEqual({ width: 800 })
     expect(parseImageOptions({ w: '1' })).toEqual({ width: 96 })
-    expect(parseImageOptions({ w: '10000' })).toEqual({ width: 2400 })
+    expect(parseImageOptions({ w: '10000' })).toEqual({ width: 3840 })
     expect(parseImageOptions({ h: '600' })).toEqual({ height: 800 })
+  })
+
+  it('keeps the limits that applied before snapping', () => {
+    expect(parseImageOptions({ w: '3840' })).toEqual({ width: 3840 })
+    expect(parseImageOptions({ w: '2560' })).toEqual({ width: 3840 })
+    expect(parseImageOptions({ h: '2160' })).toEqual({ height: 2160 })
+    expect(parseImageOptions({ h: '1800' })).toEqual({ height: 2160 })
+    expect(parseImageOptions({ q: '95' })).toEqual({ quality: 95 })
+    expect(parseImageOptions({ q: '100' })).toEqual({ quality: 100 })
   })
 
   it('snaps quality up to the allowed steps', () => {
     expect(parseImageOptions({ q: '1' })).toEqual({ quality: 60 })
     expect(parseImageOptions({ q: '81' })).toEqual({ quality: 85 })
-    expect(parseImageOptions({ q: '100' })).toEqual({ quality: 90 })
+    expect(parseImageOptions({ q: '91' })).toEqual({ quality: 95 })
   })
 
   it('ignores invalid values', () => {
