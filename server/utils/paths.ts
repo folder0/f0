@@ -14,8 +14,9 @@
  *   content directory.
  */
 
-import { realpath, stat } from 'fs/promises'
+import { readdir, realpath, stat } from 'fs/promises'
 import { join, resolve, sep } from 'path'
+import { urlNamesFor } from './content-core'
 
 /** True for path segments that never address public content. */
 export function isHiddenSegment(segment: string): boolean {
@@ -54,8 +55,13 @@ export async function resolveContentSubdir(contentDir: string, raw: unknown): Pr
   }
 
   const root = await realpath(resolve(contentDir))
-  const candidate = segments.length > 0 ? join(root, ...segments) : root
   const rel = segments.join('/')
+  // Literal path first; otherwise match numbered folders (?path=/blog finds
+  // content/02-blog)
+  let candidate = segments.length > 0 ? join(root, ...segments) : root
+  if (segments.length > 0 && !(await isDirectory(candidate))) {
+    candidate = (await resolveUrlDir(root, segments)) ?? candidate
+  }
 
   let real: string
   try {
@@ -70,8 +76,7 @@ export async function resolveContentSubdir(contentDir: string, raw: unknown): Pr
     return { ok: false, reason: 'outside content directory' }
   }
 
-  const isDirectory = await stat(real).then(s => s.isDirectory(), () => false)
-  return { ok: true, rel, abs: real, exists: isDirectory }
+  return { ok: true, rel, abs: real, exists: await isDirectory(real) }
 }
 
 // =============================================================================
@@ -110,4 +115,51 @@ export async function isConfinedEntry(
 ): Promise<boolean> {
   if (!entry.isSymbolicLink()) return true
   return isConfinedPath(join(dir, entry.name), contentDir)
+}
+
+// =============================================================================
+// URL → DIRECTORY RESOLUTION
+// =============================================================================
+
+/** Directory entries sorted by code point, so resolution is deterministic. */
+export async function sortedEntries(dir: string): Promise<string[]> {
+  try {
+    return (await readdir(dir)).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+  }
+  catch {
+    return []
+  }
+}
+
+async function isDirectory(path: string): Promise<boolean> {
+  return stat(path).then(s => s.isDirectory(), () => false)
+}
+
+/**
+ * Resolve URL segments to a directory under the content directory. Each
+ * segment matches a folder by its literal name first, then by its URL name
+ * (number or date prefix removed), so /reference finds content/02-reference.
+ * Hidden segments never match. Returns null when nothing matches.
+ */
+export async function resolveUrlDir(contentDir: string, segments: string[]): Promise<string | null> {
+  let dir = resolve(contentDir)
+  for (const segment of segments) {
+    if (!segment || isHiddenSegment(segment)) return null
+    const literal = join(dir, segment)
+    if (await isDirectory(literal)) {
+      dir = literal
+      continue
+    }
+    let found: string | null = null
+    for (const name of await sortedEntries(dir)) {
+      if (isHiddenSegment(name) || !urlNamesFor(name).includes(segment)) continue
+      if (await isDirectory(join(dir, name))) {
+        found = join(dir, name)
+        break
+      }
+    }
+    if (!found) return null
+    dir = found
+  }
+  return dir
 }

@@ -39,8 +39,8 @@ import { readdir, readFile, stat } from 'fs/promises'
 import { join, extname, relative } from 'path'
 import { parseMarkdown, isMarkdownFile, isJsonSpecFile } from './markdown'
 import { logger } from './logger'
-import { isConfinedEntry, isConfinedPath } from './paths'
-import { firstHeading, readFrontmatter, stringField, titleFromFileName } from './content-core'
+import { isConfinedEntry, isConfinedPath, resolveUrlDir, sortedEntries } from './paths'
+import { MARKDOWN_EXTENSIONS, PAGE_EXTENSIONS, firstHeading, stripOrderPrefix, stripPageExtension, readFrontmatter, stringField, titleFromFileName, urlNamesFor } from './content-core'
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -218,14 +218,6 @@ async function parseNavMd(contentDir: string): Promise<TopNavItem[]> {
 // =============================================================================
 
 /**
- * Escape RegExp metacharacters in a string so it can be safely embedded in a
- * dynamically-constructed pattern.
- */
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-/**
  * Extract order from filename prefix (e.g., "01-getting-started.md" → 1)
  */
 function extractOrderFromFilename(filename: string): number | null {
@@ -323,10 +315,9 @@ async function scanDirectory(
       const entryPath = join(dirPath, entry.name)
       // Build URL path - handle root path case to avoid double slashes
       // Strip both numeric prefixes (01-) and date prefixes (2026-02-11-)
-      const cleanName = entry.name
-        .replace(/^\d{4}-\d{2}-\d{2}-/, '')  // Date prefix: 2026-02-11-
-        .replace(/^\d+-/, '')                  // Numeric prefix: 01-
-        .replace(/\.(md|json)$/, '')
+      // URL name: order prefix and page extension removed (same rule as
+      // fileToUrlPath, so .mdx and .markdown pages link correctly)
+      const cleanName = stripOrderPrefix(stripPageExtension(entry.name))
       
       // Construct path, avoiding double slashes when basePath is "/"
       let urlPath: string
@@ -440,16 +431,17 @@ export async function buildNavigation(contentDir: string): Promise<Navigation> {
     for (const navItem of topNav) {
       if (navItem.isExternal) continue
       
-      // Convert URL path to filesystem path
-      const sectionPath = navItem.path === '/' 
-        ? contentDir 
-        : join(contentDir, navItem.path.replace(/^\//, ''))
+      // Convert URL path to a folder; [Reference](/reference) finds 02-reference/
+      const sectionPath = navItem.path === '/'
+        ? contentDir
+        : await resolveUrlDir(contentDir, navItem.path.split('/').filter(Boolean))
       
       try {
-        const stats = await stat(sectionPath)
-        if (stats.isDirectory()) {
+        if (sectionPath && (await stat(sectionPath)).isDirectory()) {
           const sectionItems = await scanDirectory(sectionPath, navItem.path, contentDir)
           sidebar.set(navItem.path, sectionItems)
+        } else {
+          sidebar.set(navItem.path, [])
         }
       } catch {
         // Directory doesn't exist, create empty sidebar
@@ -506,49 +498,54 @@ export async function getSidebarForSection(
 /**
  * Get metadata for a content file
  */
+/**
+ * Files a URL slug may refer to, in priority order. Folder segments match a
+ * literal folder first, then a numbered one (/reference → 02-reference/).
+ * In the last segment, a prefixed file (01-intro.md, 2026-02-11-hello.md)
+ * comes first, then the literal name (.md, .markdown, .mdx), the folder's
+ * index.md, and an API spec (.json): the order resolution has always used.
+ */
+async function candidatePaths(contentDir: string, slug: string): Promise<string[]> {
+  const segments = slug.split('/').filter(Boolean)
+  const name = segments.pop()
+  if (!name) return []
+
+  const parent = await resolveUrlDir(contentDir, segments)
+  if (!parent) return []
+
+  const prefixed: string[] = []
+  for (const entry of await sortedEntries(parent)) {
+    const ext = extname(entry).toLowerCase()
+    if (!(PAGE_EXTENSIONS as readonly string[]).includes(ext)) continue
+    const base = entry.slice(0, -ext.length)
+    if (base !== name && urlNamesFor(base).includes(name)) prefixed.unshift(join(parent, entry))
+  }
+
+  const literal = MARKDOWN_EXTENSIONS.map(ext => join(parent, `${name}${ext}`))
+  const folder = await resolveUrlDir(parent, [name])
+  const index = folder ? [join(folder, 'index.md')] : []
+
+  return [...prefixed, ...literal, ...index, join(parent, `${name}.json`)]
+}
+
 export async function getContentMeta(
   contentDir: string,
   slug: string
 ): Promise<ContentMeta | null> {
   const cacheKey = slug
   
-  // Check cache
-  if (contentMetaCache.has(cacheKey)) {
-    return contentMetaCache.get(cacheKey)!
-  }
-  
-  // Possible file paths to check
-  const possiblePaths = [
-    join(contentDir, `${slug}.md`),
-    join(contentDir, `${slug}/index.md`),
-    join(contentDir, `${slug}.json`),
-  ]
-  
-  // Also check with numeric prefixes (01-, 02-, etc.)
-  const slugParts = slug.split('/')
-  const fileName = slugParts.pop()!
-  const dirPath = join(contentDir, ...slugParts)
-
-  // Escape the (user-derived) filename before embedding it in a RegExp, so a
-  // slug containing regex metacharacters can't throw or cause catastrophic
-  // backtracking (ReDoS).
-  const fileNamePattern = escapeRegExp(fileName)
-
-  try {
-    const entries = await readdir(dirPath)
-    for (const entry of entries) {
-      // Match files like "01-getting-started.md" for slug "getting-started"
-      if (entry.match(new RegExp(`^\\d+-${fileNamePattern}\\.(md|json)$`))) {
-        possiblePaths.unshift(join(dirPath, entry))
-      }
-      // Match date-prefixed files like "2026-02-11-building-filesystem-cms.md"
-      if (entry.match(new RegExp(`^\\d{4}-\\d{2}-\\d{2}-${fileNamePattern}\\.(md|json)$`))) {
-        possiblePaths.unshift(join(dirPath, entry))
-      }
+  // Check cache, but only trust an entry whose file is unchanged: a renamed
+  // or deleted file must not turn into a 500 until the next webhook
+  const cachedMeta = contentMetaCache.get(cacheKey)
+  if (cachedMeta) {
+    const current = await stat(cachedMeta.path).catch(() => null)
+    if (current?.isFile() && current.mtimeMs === cachedMeta.lastModified.getTime()) {
+      return cachedMeta
     }
-  } catch {
-    // Directory doesn't exist
+    contentMetaCache.delete(cacheKey)
   }
+  
+  const possiblePaths = await candidatePaths(contentDir, slug)
   
   // Try each possible path
   for (const filePath of possiblePaths) {
@@ -564,7 +561,7 @@ export async function getContentMeta(
       let order: number
       let type: 'markdown' | 'openapi' | 'postman'
       
-      if (ext === '.md') {
+      if ((MARKDOWN_EXTENSIONS as readonly string[]).includes(ext)) {
         const { title: mdTitle, order: mdOrder } = await getTitleFromMarkdown(filePath)
         title = mdTitle
         order = mdOrder ?? 999

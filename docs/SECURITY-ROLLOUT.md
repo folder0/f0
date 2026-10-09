@@ -62,6 +62,8 @@ Expect conflicts where the fork changed the same files (for example `server/midd
 | Private mode no longer exempts files by extension | Images and other assets need a login on private sites | None (this was the leak) |
 | Private-mode responses are `Cache-Control: private, no-store` | CDN stops caching private content | Remove any CDN rule that cached `/api/content/*`, `/llms.txt` or pages on private sites |
 | `?path=` on `/api/blog`, `/api/blog/tags`, `/feed.xml` rejects `..` and hidden folders | Such requests return 400 | None |
+| Numbered folders resolve by their URL name (`/reference` finds `02-reference/`), `.mdx` and `.markdown` pages resolve, and sitemap, search, `llms-index.txt` use the URLs the sidebar links to | Pages that returned 404 from sidebar or nav links now load; sitemap entries such as `/02-reference/x` and `/guides/index` become `/reference/x` and `/guides` | None. The old URLs keep working |
+| Only a folder literally named `private` (or `server`) is blocked | Pages such as `guides/private-keys` or `/servers-guide` stop returning 403 | Rename any page you relied on that block to hide |
 | Files and folders starting with `_` or `.` return 404 as pages | `/blog/_config` no longer shows the config file | None |
 | Raw HTML in Markdown is sanitized | `<script>`, `on*=` handlers, `javascript:` links, `<iframe srcdoc>`, `<object>`, `<embed>`, `<base>`, `<meta>`, `<link>` are removed from rendered pages | Move any intentional scripts out of content |
 | SVG uploads through the admin API are rejected | Upload of `.svg` returns 400 | Add SVGs through git |

@@ -83,7 +83,8 @@ export default defineEventHandler(async (event) => {
   // SECURITY: Block access to sensitive paths
   // ---------------------------------------------------------------------------
   for (const blocked of BLOCKED_ROUTES) {
-    if (path.startsWith(blocked) || path.includes('/../')) {
+    // Whole segments only: /private and /private/x are blocked, /private-beta is not
+    if (path === blocked || path.startsWith(blocked + '/') || path.includes('/../')) {
       logger.warn('Blocked access attempt', { path, ip: getClientIp(event) })
       throw createError({
         statusCode: 403,

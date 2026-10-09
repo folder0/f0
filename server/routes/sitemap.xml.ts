@@ -15,13 +15,14 @@
  */
 
 import { readdir, stat } from 'fs/promises'
-import { join, resolve, extname } from 'path'
+import { join, relative, resolve } from 'path'
 import { isMarkdownFile, isJsonSpecFile } from '../utils/markdown'
 import { resolveLayoutForPath } from '../utils/config'
 import { logger } from '../utils/logger'
 import { isConfinedEntry } from '../utils/paths'
 import { createHash } from 'crypto'
 import { f0Config } from '../utils/f0-config'
+import { fileToUrlPath } from '../utils/content-core'
 
 // =============================================================================
 // TYPES
@@ -69,19 +70,9 @@ async function collectPages(
         const children = await collectPages(fullPath, contentDir, childUrl)
         entries.push(...children)
       } else if ((isMarkdownFile(entry.name) || isJsonSpecFile(entry.name)) && await isConfinedEntry(dir, entry, contentDir)) {
-        // Build URL path
-        const slug = entry.name
-          .replace(/^\d{4}-\d{2}-\d{2}-/, '')  // Strip date prefix
-          .replace(/^\d+-/, '')                  // Strip order prefix
-          .replace(extname(entry.name), '')      // Strip extension
-
-        // Special case: home.md → /
-        let pagePath: string
-        if (!urlPath && slug === 'home') {
-          pagePath = '/'
-        } else {
-          pagePath = urlPath ? `${urlPath}/${slug}` : `/${slug}`
-        }
+        // Canonical URL, as linked from the sidebar (01-guides/02-setup.md →
+        // /guides/setup, guides/index.md → /guides, home.md → /)
+        const pagePath = fileToUrlPath(relative(contentDir, fullPath))
 
         // Get file stats for lastmod
         let lastmod: string
@@ -214,7 +205,9 @@ export default defineEventHandler(async (event) => {
       pages = cachedPages
     }
     else {
-      pages = await collectPages(contentDir, contentDir)
+      // One entry per URL (a folder's index.md and a same-named page share one)
+      const seen = new Set<string>()
+      pages = (await collectPages(contentDir, contentDir)).filter(page => !seen.has(page.loc) && seen.add(page.loc))
 
       // Sort: homepage first, then alphabetically
       pages.sort((a, b) => {

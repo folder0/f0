@@ -35,6 +35,7 @@ import { logger } from '../utils/logger'
 import { isConfinedEntry } from '../utils/paths'
 import { markdownToPlainText, isMarkdownFile } from '../utils/markdown'
 import { f0Config } from '../utils/f0-config'
+import { stripOrderPrefix } from '../utils/content-core'
 
 // =============================================================================
 // TYPES
@@ -78,7 +79,9 @@ async function scanSections(contentDir: string): Promise<Map<string, SectionInfo
         const fullPath = join(dir, entry.name)
 
         if (entry.isDirectory()) {
-          const childPath = sectionPath ? `${sectionPath}/${entry.name}` : `/${entry.name}`
+          // Section paths use URL names (02-reference → /reference), the form
+          // /llms.txt?section= filters on
+          const childPath = sectionPath ? `${sectionPath}/${stripOrderPrefix(entry.name)}` : `/${stripOrderPrefix(entry.name)}`
           const childStats = await walk(fullPath, childPath)
 
           if (childStats.pages > 0) {
@@ -120,7 +123,7 @@ async function scanSections(contentDir: string): Promise<Map<string, SectionInfo
       if (entry.name.startsWith('.') || entry.name.startsWith('_')) continue
       if (entry.name === 'assets' || entry.name === 'images') continue
 
-      const sectionPath = `/${entry.name}`
+      const sectionPath = `/${stripOrderPrefix(entry.name)}`
       const fullPath = join(contentDir, entry.name)
       const stats = await walk(fullPath, sectionPath)
 
@@ -141,7 +144,7 @@ async function scanSections(contentDir: string): Promise<Map<string, SectionInfo
       if (entry.isDirectory()) continue
       if (entry.name.startsWith('.') || entry.name.startsWith('_')) continue
       if (entry.name === 'nav.md') continue
-      if (isMarkdownFile(entry.name)) {
+      if (isMarkdownFile(entry.name) && await isConfinedEntry(contentDir, entry, contentDir)) {
         rootPages++
         try {
           const content = await readFile(join(contentDir, entry.name), 'utf-8')

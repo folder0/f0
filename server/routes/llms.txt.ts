@@ -23,6 +23,7 @@
 import { getCachedLlmsTxt } from '../utils/llms-cache'
 import { logger } from '../utils/logger'
 import { f0Config } from '../utils/f0-config'
+import { stripOrderPrefix } from '../utils/content-core'
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
@@ -31,8 +32,10 @@ export default defineEventHandler(async (event) => {
   
   // Parse section filter
   const sectionParam = query.section as string | undefined
-  const sections = sectionParam
-    ? [sectionParam.startsWith('/') ? sectionParam : `/${sectionParam}`]
+  // Match on URL names, so ?section=02-reference and ?section=reference both
+  // select content/02-reference
+  const sections = typeof sectionParam === 'string' && sectionParam
+    ? ['/' + sectionParam.split('/').filter(Boolean).map(stripOrderPrefix).join('/')]
     : []
   
   try {

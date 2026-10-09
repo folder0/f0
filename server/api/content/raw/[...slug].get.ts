@@ -45,7 +45,10 @@ export default defineEventHandler(async (event) => {
   const download = query.download === 'true'
   
   // Security: Block private paths
-  if (slug.includes('private') || slug.includes('..')) {
+  // A folder named 'private' is never content (substring matching used to
+  // block pages such as guides/private-keys)
+  const segments = slug.split('/')
+  if (segments.includes('private') || segments.includes('..') || slug.includes('..')) {
     throw createError({
       statusCode: 403,
       statusMessage: 'Forbidden',
