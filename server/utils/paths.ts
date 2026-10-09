@@ -29,7 +29,11 @@ export function hasHiddenSegment(slug: string): boolean {
 }
 
 export type ContentSubdir =
-  | { ok: true, rel: string, abs: string, exists: boolean }
+  /**
+   * rel: the path as requested ('blog'); dir: the folder it resolved to,
+   * relative to the content root ('02-blog'); abs: that folder's real path.
+   */
+  | { ok: true, rel: string, dir: string, abs: string, exists: boolean }
   | { ok: false, reason: string }
 
 /**
@@ -69,14 +73,15 @@ export async function resolveContentSubdir(contentDir: string, raw: unknown): Pr
   }
   catch {
     // Does not exist (or is unreadable): well-formed but absent.
-    return { ok: true, rel, abs: candidate, exists: false }
+    return { ok: true, rel, dir: rel, abs: candidate, exists: false }
   }
 
   if (real !== root && !real.startsWith(root + sep)) {
     return { ok: false, reason: 'outside content directory' }
   }
 
-  return { ok: true, rel, abs: real, exists: await isDirectory(real) }
+  const dir = real === root ? '' : real.slice(root.length + 1).split(sep).join('/')
+  return { ok: true, rel, dir, abs: real, exists: await isDirectory(real) }
 }
 
 // =============================================================================

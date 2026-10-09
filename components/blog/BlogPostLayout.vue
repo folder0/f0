@@ -84,6 +84,8 @@ interface BlogMeta {
   excerpt: string
   pinned: boolean
   readingTime: number
+  prev?: { title: string; path: string } | null
+  next?: { title: string; path: string } | null
 }
 
 interface ContentResponse {
@@ -101,15 +103,14 @@ const props = defineProps<{
   content: ContentResponse
 }>()
 
-// Derive the blog section base path from the content path
+// The blog this post belongs to: its URL without the last segment (nested
+// blogs such as /guides/changelog included)
 const blogBasePath = computed(() => {
-  const path = props.content.path || ''
-  const segments = path.split('/').filter(Boolean)
-  if (segments.length > 1) {
-    return '/' + segments[0]
-  }
-  return '/'
+  const segments = (props.content.path || '').split('/').filter(Boolean)
+  return segments.length > 1 ? '/' + segments.slice(0, -1).join('/') : '/'
 })
+
+useFeedLinks(blogBasePath)
 
 function tagColorClass(tag: string): string {
   let hash = 0
@@ -142,26 +143,7 @@ const formattedDate = computed(() => {
   }
 })
 
-// Fetch adjacent posts for prev/next navigation
-const { data: blogData } = await useFetch<{
-  posts: Array<{ title: string; path: string; date: string }>
-}>('/api/blog', {
-  query: { path: blogBasePath },
-})
-
-const prevPost = computed(() => {
-  if (!blogData.value?.posts || !props.content.path) return null
-  const posts = blogData.value.posts
-  const idx = posts.findIndex(p => p.path === props.content.path)
-  if (idx > 0) return posts[idx - 1]
-  return null
-})
-
-const nextPost = computed(() => {
-  if (!blogData.value?.posts || !props.content.path) return null
-  const posts = blogData.value.posts
-  const idx = posts.findIndex(p => p.path === props.content.path)
-  if (idx >= 0 && idx < posts.length - 1) return posts[idx + 1]
-  return null
-})
+// Previous and next posts come with the post (from the folder's full list)
+const prevPost = computed(() => props.content.blog?.prev ?? null)
+const nextPost = computed(() => props.content.blog?.next ?? null)
 </script>

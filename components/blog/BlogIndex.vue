@@ -91,6 +91,8 @@ const route = useRoute()
 const router = useRouter()
 
 const blogPath = computed(() => props.path || '/blog')
+
+useFeedLinks(blogPath)
 const apiPath = computed(() => blogPath.value.replace(/^\//, ''))
 const activeTag = computed(() => (route.query.tag as string) || '')
 const currentPage = computed(() => parseInt(route.query.page as string) || 1)

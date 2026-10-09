@@ -253,9 +253,10 @@ export function getConfigForPath(contentDir: string, contentPath: string, filePa
 
 /**
  * The URL path of the site's blog, for /feed.xml without ?path=: the root when
- * the root is a blog (F0_MODE=blog or a root _config.md), otherwise the first
- * top-level folder whose _config.md declares the blog layout. Null when the
- * site has no blog.
+ * the root is a blog (F0_MODE=blog or a root _config.md), otherwise the
+ * top-level blog folder named blog (or NN-blog), otherwise the first top-level
+ * folder whose _config.md declares the blog layout. Null when the site has no
+ * blog.
  */
 export function defaultBlogPath(contentDir: string): string | null {
   if (resolveDirectoryConfig(contentDir, '').layout === 'blog') return '/'
@@ -269,7 +270,8 @@ export function defaultBlogPath(contentDir: string): string | null {
   catch {
     return null
   }
-  const blog = names.find(name => resolveDirectoryConfig(contentDir, name).layout === 'blog')
+  const blogs = names.filter(name => resolveDirectoryConfig(contentDir, name).layout === 'blog')
+  const blog = blogs.find(name => stripOrderPrefix(name) === 'blog') ?? blogs[0]
   return blog ? `/${stripOrderPrefix(blog)}` : null
 }
 

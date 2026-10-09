@@ -525,7 +525,7 @@ Draft posts don't appear in the blog listing, sidebar, search, sitemap, `llms.tx
 
 ### 2.11 — RSS Feed
 
-The blog automatically generates an RSS feed at `/feed.xml`. No configuration needed. The feed includes all published (non-draft) blog posts with titles, excerpts, dates, and links.
+The blog automatically publishes feeds, with no configuration: RSS at `/feed.xml`, Atom at `/feed.atom` and JSON Feed at `/feed.json`. Each carries the 20 newest published (non-draft) posts with their full content, and blog pages link to them so readers can subscribe. Add `?path=/your-blog` for a specific blog folder; without it, the feeds serve your blog folder.
 
 Readers can subscribe at `https://your-site.com/feed.xml`.
 

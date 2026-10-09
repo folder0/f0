@@ -104,6 +104,8 @@ interface ContentResponse {
     excerpt: string
     pinned: boolean
     readingTime: number
+    prev?: { title: string, path: string } | null
+    next?: { title: string, path: string } | null
   }
 }
 

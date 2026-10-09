@@ -18,7 +18,7 @@
  * - C-PERF-CACHE-MTIME-010: Cache invalidation uses filesystem mtime
  */
 
-import { basename, relative, resolve } from 'path'
+import { basename, dirname, relative, resolve } from 'path'
 import { isMarkdownFile, isJsonSpecFile, extractFrontmatter, generateExcerpt, calculateReadingTime, extractDateFromFilename } from '../../utils/markdown'
 import { resolveContentPath } from '../../utils/navigation'
 import { parseApiSpec } from '../../utils/openapi-parser'
@@ -29,6 +29,7 @@ import { hasHiddenSegment } from '../../utils/paths'
 import { f0Config } from '../../utils/f0-config'
 import { fileToUrlPath, isDraft, resolveAssetUrl } from '../../utils/content-core'
 import { pageChrome } from '../../utils/page-chrome'
+import { listBlogPosts } from '../../utils/blog'
 
 export default defineEventHandler(async (event) => {
   const settings = f0Config()
@@ -130,7 +131,7 @@ export default defineEventHandler(async (event) => {
           }
         }
         
-        response.blog = {
+        const blog: Record<string, unknown> = {
           date,
           author: (fm.author as string) || dirConfig.defaultAuthor || '',
           tags: Array.isArray(fm.tags) ? (fm.tags as string[]).map((t: unknown) => String(t).toLowerCase()) : [],
@@ -139,6 +140,17 @@ export default defineEventHandler(async (event) => {
           pinned: fm.pinned === true,
           readingTime: calculateReadingTime(cached.rawMarkdown),
         }
+
+        // Previous and next post from the folder's full list (not one page
+        // of the index, which cut navigation off after the 10th post)
+        const postUrl = fileToUrlPath(relative(resolve(settings.contentDir), resolve(filePath)))
+        const urlBase = postUrl.slice(0, postUrl.lastIndexOf('/'))
+        const posts = await listBlogPosts(dirname(resolve(filePath)), urlBase, dirConfig)
+        const index = posts.findIndex(post => post.path === postUrl)
+        const link = (post?: { title: string, path: string }) => (post ? { title: post.title, path: post.path } : null)
+        blog.prev = index > 0 ? link(posts[index - 1]) : null
+        blog.next = index >= 0 ? link(posts[index + 1]) : null
+        response.blog = blog
       }
       
       return response
