@@ -330,6 +330,7 @@ Checks: frontmatter YAML, image references, heading hierarchy, title resolution,
 | `/api/blog?path=` | GET | Blog post listings |
 | `/api/agents/search?q=` | GET | AI semantic search |
 | `/api/content/raw/[...slug]` | GET | Raw Markdown source |
+| `/<page>.md` | GET | The same Markdown source at the page's own URL plus `.md` (`/guides/intro.md`, `/home.md`); pages link to it with `rel="alternate" type="text/markdown"` |
 | `/api/content/assets/[...path]` | GET | Static assets (with image processing) |
 | `/llms.txt` | GET | AI-optimized content stream |
 | `/llms-index.txt` | GET | Section index with token estimates |

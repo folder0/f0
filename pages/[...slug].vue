@@ -186,6 +186,11 @@ useSeo(() => ({
   noIndex: content.value?.draft === true,
 }))
 
+// Advertise the page's Markdown source (same URL + .md) to agents and tools
+useHead(computed(() => (content.value?.type === 'markdown'
+  ? { link: [{ rel: 'alternate', type: 'text/markdown', href: `${route.path.replace(/\/$/, '')}.md` }] }
+  : {})))
+
 // Drafts also carry the header form, for crawlers that skip meta tags
 if (import.meta.server && content.value?.draft) {
   useResponseHeader('X-Robots-Tag').value = 'noindex'
