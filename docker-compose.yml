@@ -2,7 +2,7 @@
 # LITEDOCS - DOCKER COMPOSE (LOCAL DEVELOPMENT)
 # =============================================================================
 #
-# This file sets up LiteDocs for local development and testing.
+# This file sets up f0 for local development and testing.
 #
 # Usage:
 #   docker-compose up        # Start in foreground
@@ -21,8 +21,8 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        NUXT_PUBLIC_SITE_NAME: LiteDocs
-        NUXT_PUBLIC_SITE_DESCRIPTION: Documentation Platform
+        NUXT_PUBLIC_SITE_NAME: f0
+        NUXT_PUBLIC_SITE_DESCRIPTION: Documentation
     
     ports:
       - "3000:3000"
@@ -33,22 +33,26 @@ services:
       - ./private:/app/private:ro
     
     # Environment variables
+    # Use the NUXT_* names: only they override the app's runtime config when
+    # the container starts. A plain AUTH_MODE or JWT_SECRET set here is ignored
+    # at runtime (an AUTH_MODE=private set that way leaves the site public).
     environment:
       # Authentication mode: 'public' or 'private'
-      - AUTH_MODE=public
+      - NUXT_AUTH_MODE=public
       
       # JWT secret (CHANGE IN PRODUCTION!)
-      - JWT_SECRET=dev-secret-change-in-production
+      - NUXT_JWT_SECRET=dev-secret-change-in-production
       
       # AWS SES (required for private mode)
-      # - AWS_REGION=us-east-1
-      # - AWS_ACCESS_KEY_ID=your-access-key
-      # - AWS_SECRET_ACCESS_KEY=your-secret-key
-      # - EMAIL_FROM=no-reply@example.com
+      # - NUXT_AWS_REGION=us-east-1
+      # - NUXT_AWS_ACCESS_KEY_ID=your-access-key
+      # - NUXT_AWS_SECRET_ACCESS_KEY=your-secret-key
+      # - NUXT_EMAIL_FROM=no-reply@example.com
       
-      # Site metadata
-      - NUXT_PUBLIC_SITE_NAME=LiteDocs
-      - NUXT_PUBLIC_SITE_DESCRIPTION=Documentation Platform
+      # Site metadata (set the URL: canonical links, sitemap and feeds use it)
+      - NUXT_PUBLIC_SITE_NAME=f0
+      - NUXT_PUBLIC_SITE_DESCRIPTION=Documentation
+      # - NUXT_PUBLIC_SITE_URL=https://docs.example.com
       
       # Google Analytics (optional)
       # - NUXT_PUBLIC_GTAG_ID=G-XXXXXXXXXX
@@ -58,10 +62,10 @@ services:
     
     # Health check
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
-      interval: 30s
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/_ready"]
+      interval: 10s
       timeout: 3s
-      retries: 3
+      retries: 6
       start_period: 10s
 
 # =============================================================================
@@ -80,12 +84,13 @@ services:
 #       - f0-content:/app/content
 #       - f0-private:/app/private
 #     environment:
-#       - AUTH_MODE=private
-#       - JWT_SECRET=${JWT_SECRET}
-#       - AWS_REGION=${AWS_REGION}
-#       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-#       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-#       - EMAIL_FROM=${EMAIL_FROM}
+#       - NUXT_AUTH_MODE=private
+#       - NUXT_JWT_SECRET=${JWT_SECRET}
+#       - NUXT_AWS_REGION=${AWS_REGION}
+#       - NUXT_AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+#       - NUXT_AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+#       - NUXT_EMAIL_FROM=${EMAIL_FROM}
+#       - NUXT_PUBLIC_SITE_URL=https://docs.example.com
 #     restart: always
 #
 # volumes:

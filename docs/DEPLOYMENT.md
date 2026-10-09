@@ -1,253 +1,120 @@
 # f0 Deployment Guide
 
-This guide covers deploying f0 to production, with specific instructions for **Coolify** (self-hosted PaaS).
+An overview of running f0 in production. For step-by-step Coolify instructions, see [COOLIFY-DEPLOYMENT.md](./COOLIFY-DEPLOYMENT.md).
 
-## Deployment Options
+## How f0 runs
 
-| Platform | Complexity | Cost | Best For |
-|----------|------------|------|----------|
-| **Coolify** | Low | Self-hosted | Teams with existing infrastructure |
-| Docker Compose | Low | Self-hosted | Simple VPS deployments |
-| Kubernetes | High | Variable | Enterprise scale |
-| Vercel/Netlify | Low | Free tier | Static sites (no private mode) |
+f0 is a Node.js server built from this repository with the included Dockerfile. It reads Markdown from `/app/content` at runtime and, in private mode, the allowlist from `/app/private`. One container serves one site.
 
-## Deploying to Coolify
+| Platform | Notes |
+|----------|-------|
+| **Coolify** | The documented path. See the Coolify guide. |
+| Docker / Docker Compose | `docker compose up` with the included `docker-compose.yml` for local use. |
+| Static hosts (Vercel, Netlify static) | Not supported. f0 needs a server for search, `/llms.txt`, image processing and private mode. |
 
-### Prerequisites
+## Configuration
 
-- Coolify installed on your server
-- GitHub repository with f0 code
-- Domain name (optional but recommended)
-
-### Step 1: Connect Repository
-
-1. In Coolify dashboard, go to **Projects** → **New Project**
-2. Select **GitHub** as source
-3. Choose your f0 repository
-4. Select the branch to deploy (usually `main`)
-
-### Step 2: Configure Build Settings
-
-| Setting | Value |
-|---------|-------|
-| Build Pack | Dockerfile |
-| Dockerfile | `./Dockerfile` |
-| Port | 3000 |
-
-### Step 3: Set Environment Variables
-
-In Coolify's **Environment Variables** section:
+Set configuration with the `NUXT_` environment variable names. Only those override f0's settings when the container starts; short names like `AUTH_MODE` are read once at build time and frozen.
 
 ```env
-# Required
-AUTH_MODE=private
-JWT_SECRET=<generate-secure-secret>
-
-# AWS SES (for private mode)
-AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=<your-key>
-AWS_SECRET_ACCESS_KEY=<your-secret>
-EMAIL_FROM=no-reply@yourdomain.com
-
-# Site Configuration
+# Every site
+NUXT_AUTH_MODE=public                       # or private
 NUXT_PUBLIC_SITE_NAME=My Documentation
 NUXT_PUBLIC_SITE_DESCRIPTION=Documentation for our product
+NUXT_PUBLIC_SITE_URL=https://docs.example.com
 
-# Optional: Analytics
-NUXT_PUBLIC_GTAG_ID=G-XXXXXXXXXX
+# Private sites: set all of these together
+NUXT_JWT_SECRET=<openssl rand -base64 32>
+NUXT_AWS_REGION=us-east-1
+NUXT_AWS_ACCESS_KEY_ID=<key>
+NUXT_AWS_SECRET_ACCESS_KEY=<secret>
+NUXT_EMAIL_FROM=no-reply@example.com
+
+# Optional
+GITHUB_WEBHOOK_SECRET=<secret>              # required if you use /api/webhook
+F0_MODE=blog                                # root of the site is a blog
 ```
 
-**Generate JWT Secret:**
-```bash
-openssl rand -base64 32
-```
+Keep secrets out of the build. On Coolify, untick **Available at Buildtime** for secrets. Values present at build time can be written into the built image.
 
-### Step 4: Configure Persistent Volumes
+## Content: choose one strategy
 
-**Critical:** Your documentation content needs to persist across deployments.
+| Strategy | How content changes reach the site | Use when |
+|----------|------------------------------------|----------|
+| **In the repository** | Push; the platform rebuilds the image | Content is reviewed in git alongside the site |
+| **Mounted directory** | Edit files on the server; changes show up without a redeploy | Content is edited on the server or synced by another tool |
 
-In Coolify's **Persistent Storage** section, add:
+Don't combine them. A volume mounted on `/app/content` hides the content inside the image, so git pushes stop having any effect.
 
-| Container Path | Description |
-|----------------|-------------|
-| `/app/content` | Documentation markdown files |
-| `/app/private` | Allowlist and secure files |
+### The GitHub webhook
 
-### Step 5: Set Up Domain (Optional)
+`POST /api/webhook` verifies GitHub's signature and clears f0's in-memory caches. It does **not** fetch content. It is useful when another process updates a mounted content directory and you want changes to show up immediately. It refuses every request unless `GITHUB_WEBHOOK_SECRET` is set.
 
-1. Go to **Domains** in your Coolify service
-2. Add your domain (e.g., `docs.yourdomain.com`)
-3. Enable **HTTPS** (Let's Encrypt)
+### Admin upload API
 
-### Step 6: Deploy
+In private mode, users listed in `admins` in `private/allowlist.json` can upload Markdown, OpenAPI/Postman JSON and images through `POST /api/admin/upload`. Without an `admins` list nobody can. Uploads are written into the content directory, so they only persist on sites that use a mounted directory.
 
-Click **Deploy** and wait for the build to complete.
+## Health checks
 
-## Updating Content
+| Endpoint | Meaning |
+|----------|---------|
+| `/_health` | The process is alive |
+| `/_ready` | The content directory is readable. Use this for load balancers and Coolify. |
 
-### Option A: Git-Based Updates (Recommended)
+Both answer without a login in private mode. The Dockerfile's `HEALTHCHECK` probes `/_ready`.
 
-1. Push changes to your repository
-2. Coolify automatically rebuilds and deploys
-3. Content in persistent volumes remains unchanged
+## Caching and CDNs
 
-To update content:
-- SSH into your server
-- Edit files in the mounted volume
-- Or use Coolify's file manager (if available)
+f0 caches parsed pages, navigation and `/llms.txt` in memory and refreshes them when files change. Caches start empty after a restart and warm up as pages are requested.
 
-### Option B: GitHub Webhook Sync
+Behind a CDN such as Cloudflare:
 
-Set up automatic content sync from a separate content repository:
+- Public sites: `/_nuxt/*` can be cached for a year. Let f0's own `Cache-Control` headers govern everything else.
+- Private sites: f0 sends `Cache-Control: private, no-store` on every response except `/_nuxt/*`. Don't add CDN rules that cache `/api/content/*`, `/llms.txt` or pages, or the CDN will serve signed-in content to anyone.
 
-1. Create a webhook in your content repository
-2. Point it to: `https://docs.yourdomain.com/api/webhook`
-3. Set the secret in `GITHUB_WEBHOOK_SECRET`
+## Scaling
 
-### Option C: Admin Upload (Future)
+f0 is designed for one instance per site. These live in process memory and are not shared between instances:
 
-The admin UI for uploading content is planned for a future release.
+- one-time login codes and rate limits
+- revoked sessions (after logout)
+- content caches
 
-## Health Checks
+Running several instances needs sticky sessions at least, and revoked sessions would only be known to the instance that handled the logout.
 
-f0 includes a built-in health check. Coolify will automatically use:
+## Security checklist
 
-```
-GET / (expects 200 OK)
-```
-
-## Scaling Considerations
-
-### Single Instance (Default)
-
-f0 uses in-memory storage for:
-- OTP codes
-- Rate limiting
-
-This works perfectly for single-instance deployments.
-
-### Multiple Instances
-
-If you need horizontal scaling:
-
-1. **Sticky Sessions:** Configure your load balancer to use sticky sessions
-2. **Redis:** Replace in-memory storage with Redis (modify `server/utils/storage.ts`)
-3. **Shared Storage:** Ensure content volumes are accessible by all instances
-
-## Security Checklist
-
-- [ ] `JWT_SECRET` is unique and secure (32+ characters)
-- [ ] AWS credentials have minimal required permissions
-- [ ] `private/allowlist.json` contains only authorized emails
+- [ ] `NUXT_AUTH_MODE=private` for private sites, and anonymous requests redirect to `/login`
+- [ ] `NUXT_JWT_SECRET` is random, 32+ characters, and not available at build time
+- [ ] No `.env` file or `.output/` directory was ever committed; if one was, rotate the secrets it held
+- [ ] `private/allowlist.json` lists only the people who need access, and `admins` only those who need to upload
+- [ ] AWS credentials only allow sending email through SES
 - [ ] HTTPS is enabled
-- [ ] Environment variables are not exposed in logs
+- [ ] No CDN rule caches content on private sites
 
-## Monitoring
+## Backups
 
-### Logs
-
-In Coolify, view logs via:
-- Dashboard → Your Service → Logs
-- Or: `docker logs <container-id>`
-
-### Metrics to Watch
-
-- Response times (should be <200ms for cached content)
-- Memory usage (typically <256MB)
-- Error rate (check for 500s)
-
-## Backup Strategy
-
-### What to Back Up
-
-1. **Content directory** (`/app/content`)
-   - Your markdown files
-   - API specifications
-   - Images and assets
-
-2. **Private directory** (`/app/private`)
-   - `allowlist.json`
-
-3. **Environment variables**
-   - Export from Coolify periodically
-
-### Backup Commands
+Back up the content and private directories (or the repository, if content lives in git), and your environment variables.
 
 ```bash
-# On your server
 docker cp <container>:/app/content ./backup/content
 docker cp <container>:/app/private ./backup/private
 ```
 
+## Rollback
+
+In Coolify, open **Deployments**, pick the last working deployment and choose **Rollback**. This needs previous images to still exist, so don't prune Docker images before deploying.
+
 ## Troubleshooting
 
-### Deployment Fails
+### Content not showing
 
-1. Check Coolify build logs
-2. Verify Dockerfile syntax
-3. Ensure all environment variables are set
+1. If you mount a content directory, check the mount path is `/app/content` and that the files are readable by uid 1001.
+2. Check that `nav.md` exists in the content directory.
+3. Look for parsing errors in the logs.
 
-### Content Not Showing
+### Login emails don't arrive
 
-1. Check volume mounts are correct
-2. Verify `nav.md` exists in content directory
-3. Check server logs for parsing errors
-
-### Authentication Errors
-
-1. Verify AWS SES credentials
-2. Check email is in allowlist
-3. Ensure `AUTH_MODE=private` is set
-4. Test SES from AWS console
-
-### SSL Certificate Issues
-
-1. Verify domain DNS points to Coolify server
-2. Check Let's Encrypt rate limits
-3. Try manual certificate upload
-
-## Rollback Procedure
-
-In Coolify:
-1. Go to **Deployments**
-2. Find the previous working deployment
-3. Click **Rollback**
-
-Or manually:
-```bash
-docker tag f0:current f0:backup
-docker pull f0:previous
-docker-compose up -d
-```
-
-## Performance Optimization
-
-### Caching
-
-f0 caches:
-- Parsed markdown (in memory)
-- Navigation structure (in memory)
-
-Cache is invalidated on:
-- Server restart
-- Webhook trigger
-- Admin upload
-
-### CDN (Optional)
-
-For high-traffic sites, add a CDN:
-
-1. Set up Cloudflare or similar
-2. Point DNS to CDN
-3. Configure cache rules:
-   - `/_nuxt/*` → Cache 1 year
-   - `/api/content/*` → Cache 1 hour
-   - `/llms.txt` → Cache 1 hour
-
-## Support
-
-If you encounter issues:
-
-1. Check the [troubleshooting section](#troubleshooting)
-2. Review Coolify documentation
-3. Open an issue on GitHub
+1. Check `NUXT_AWS_*` and `NUXT_EMAIL_FROM` are set at runtime.
+2. Check the address is in `private/allowlist.json`.
+3. Confirm the sender address is verified in SES (and the recipient too, if SES is in sandbox mode).

@@ -44,7 +44,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Build arguments (can be overridden at build time)
-ARG NUXT_PUBLIC_SITE_NAME=LiteDocs
+ARG NUXT_PUBLIC_SITE_NAME=f0
 ARG NUXT_PUBLIC_SITE_DESCRIPTION=Documentation
 
 # Set build-time environment variables
@@ -88,8 +88,12 @@ ENV HOST=0.0.0.0
 ENV PORT=3000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
+# Probe the readiness endpoint, not '/': '/' is a full server render (and a
+# redirect in private mode). 127.0.0.1, not localhost: BusyBox wget may resolve
+# localhost to ::1 while the server listens on IPv4. Coolify uses this
+# healthcheck for Dockerfile-based apps.
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=6 \
+  CMD wget -q -O /dev/null http://127.0.0.1:3000/_ready || exit 1
 
 # Start the application
 CMD ["node", ".output/server/index.mjs"]

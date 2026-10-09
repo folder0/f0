@@ -219,7 +219,7 @@ docker build -t f0 .
 docker run -p 3000:3000 \
   -v ./content:/app/content \
   -v ./private:/app/private \
-  -e AUTH_MODE=public \
+  -e NUXT_AUTH_MODE=public \
   f0
 ```
 
@@ -243,7 +243,7 @@ kill -9 <PID>
 
 ### Authentication not working
 
-1. Check `AUTH_MODE=private` is set
+1. Check `NUXT_AUTH_MODE=private` is set (in containers, the short `AUTH_MODE` is ignored at runtime)
 2. Verify AWS credentials are correct
 3. Ensure email is in allowlist
 4. Check SES is out of sandbox mode (or recipient is verified)

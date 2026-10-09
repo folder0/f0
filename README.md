@@ -261,7 +261,7 @@ Auto-generated for every deployment:
 Secure internal documentation with email OTP — no Identity Provider required.
 
 ```bash
-AUTH_MODE=private
+NUXT_AUTH_MODE=private
 ```
 
 Add authorized emails to `/private/allowlist.json`:
@@ -352,7 +352,7 @@ docker build -t f0 .
 
 docker run -p 3000:3000 \
   -v $(pwd)/content:/app/content \
-  -e AUTH_MODE=public \
+  -e NUXT_AUTH_MODE=public \
   -e NUXT_PUBLIC_SITE_NAME="Acme Docs" \
   -e NUXT_PUBLIC_SITE_URL="https://docs.acme.com" \
   f0
@@ -367,18 +367,20 @@ node .output/server/index.mjs
 
 ### Environment Variables
 
+Set these with the `NUXT_` names shown. Only those override the configuration when the container starts; short names like `AUTH_MODE` are read once at build time and then ignored (a site set to private that way stays public). For local development, the short names in `.env` work because `nuxt dev` reads them on every start.
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NUXT_PUBLIC_SITE_NAME` | `f0` | Site name (header, OG, RSS) |
 | `NUXT_PUBLIC_SITE_DESCRIPTION` | `Documentation` | Default meta description |
 | `NUXT_PUBLIC_SITE_URL` | — | Base URL for sitemap, canonical links, OG |
-| `CONTENT_DIR` | `./content` | Path to content directory |
-| `AUTH_MODE` | `public` | `public` or `private` |
-| `JWT_SECRET` | — | Secret for signing tokens (required in private mode) |
-| `AWS_REGION` | `us-east-1` | AWS region for SES |
-| `AWS_ACCESS_KEY_ID` | — | AWS credentials for email |
-| `AWS_SECRET_ACCESS_KEY` | — | AWS credentials for email |
-| `EMAIL_FROM` | — | Sender email address |
+| `NUXT_CONTENT_DIR` | `./content` | Path to content directory |
+| `NUXT_AUTH_MODE` | `public` | `public` or `private` |
+| `NUXT_JWT_SECRET` | — | Secret for signing tokens (required in private mode) |
+| `NUXT_AWS_REGION` | `us-east-1` | AWS region for SES |
+| `NUXT_AWS_ACCESS_KEY_ID` | — | AWS credentials for email |
+| `NUXT_AWS_SECRET_ACCESS_KEY` | — | AWS credentials for email |
+| `NUXT_EMAIL_FROM` | — | Sender email address |
 | `GITHUB_WEBHOOK_SECRET` | — | Secret for webhook signature verification |
 
 ---
