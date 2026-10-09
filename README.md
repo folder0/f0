@@ -149,6 +149,27 @@ Methods get colored badges: GET (green), POST (blue), PUT (orange), PATCH (purpl
 
 Supported: YouTube, Loom, Figma, GitHub Gists. Unknown URLs render as styled link cards.
 
+### Tabs, Steps and Cards
+
+````markdown
+:::tabs
+@tab npm
+```bash
+npm install f0
+```
+@tab pnpm
+```bash
+pnpm add f0
+```
+:::
+````
+
+`:::steps` numbers each `###` heading inside it; `:::cards` lays out a list of links as a grid. See [docs/CONTENT-GUIDE.md](docs/CONTENT-GUIDE.md).
+
+### Partials
+
+Markdown in `_partials/` renders around pages without touching code: `announcement.md` (banner on every page), `footer.md`, `doc-footer.md` (after docs pages) and `post-footer.md` (after blog posts; the nearest folder's file wins).
+
 ### Mermaid Diagrams
 
 ```markdown
@@ -468,9 +489,16 @@ f0 operates under 13 inviolable constraints that prevent feature creep and ensur
 - [x] Embed system (Loom, Figma, Gist, Mermaid)
 - [x] Asset validation
 - [x] Content validation CLI
-- [x] Blog engine with RSS feed
+- [x] Blog engine with RSS, Atom and JSON feeds (full content)
+- [x] Blog presets (`classic`, `cards`, `minimal`) and `--blog-*` design tokens
 - [x] Webhook for CI/CD content sync
-- [ ] Full-text search (Meilisearch integration)
+- [x] Site search with prefix matching and typo tolerance
+- [x] Docs breadcrumbs, previous/next links and "Edit this page"
+- [x] Tabs, steps and cards components; Markdown partials
+- [x] Markdown at every page URL (`/page.md`)
+- [x] Runtime-only settings, fail-closed private mode, engine image on GHCR
+- [x] Accessibility (axe) and JavaScript budget checks in CI
+- [x] Content census for each release (`npm run census -- ./content`)
 - [ ] Versioned documentation
 - [ ] Multi-language support
 
