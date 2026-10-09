@@ -148,22 +148,34 @@ describe('webhook', () => {
 
   it('rejects a chunked body over 1MB with 413 and keeps running', async () => {
     const status = await new Promise<number>((resolveStatus, reject) => {
+      let answered = false
       const req = request(`${server.url}/api/webhook`, {
         method: 'POST',
         headers: { 'x-github-event': 'push', 'x-hub-signature-256': 'sha256=00', 'content-type': 'application/json' },
       }, (res) => {
+        answered = true
         res.resume()
         resolveStatus(res.statusCode ?? 0)
       })
       req.on('error', (error) => {
-        // The server may close the socket while we are still writing.
-        if ((error as NodeJS.ErrnoException).code !== 'EPIPE' && (error as NodeJS.ErrnoException).code !== 'ECONNRESET') reject(error)
+        // The server closes the connection after its 413. If that close
+        // reaches us while we are still sending, the reset can arrive before
+        // the response is read: count it as the rejection.
+        const code = (error as NodeJS.ErrnoException).code
+        if (answered) return
+        if (code === 'ECONNRESET' || code === 'EPIPE') resolveStatus(-1)
+        else reject(error)
       })
+      // Stream 2.5MB without a content-length, one chunk at a time, and stop
+      // as soon as the server has answered.
       const chunk = 'x'.repeat(64 * 1024)
-      for (let i = 0; i < 40; i++) req.write(chunk) // 2.5MB, no content-length
-      req.end()
+      const writeNext = (i: number) => {
+        if (answered || i >= 40) return req.end()
+        req.write(chunk, () => setImmediate(() => writeNext(i + 1)))
+      }
+      writeNext(0)
     })
-    expect(status).toBe(413)
+    expect([413, -1]).toContain(status)
     expect((await get(`${server.url}/_health`)).status).toBe(200)
     expect(server.output()).not.toMatch(/uncaught|unhandled/i)
   })
