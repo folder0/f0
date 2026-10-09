@@ -7,13 +7,13 @@
 # seconds; upgrading f0 means changing F0_IMAGE, nothing else.
 #
 # Pin a version tag or, better, a digest:
-#   ghcr.io/adeinnovates/f0:1.0.0
-#   ghcr.io/adeinnovates/f0@sha256:<digest>
+#   ghcr.io/folder0/f0:1.0.0
+#   ghcr.io/folder0/f0@sha256:<digest>
 # Coolify: set F0_IMAGE as a build-time variable to override per site.
 #
 # Settings (NUXT_AUTH_MODE, NUXT_JWT_SECRET, ...) are runtime environment
 # only. Never pass secrets as build arguments.
-ARG F0_IMAGE=ghcr.io/adeinnovates/f0:latest
+ARG F0_IMAGE=ghcr.io/folder0/f0:latest
 FROM ${F0_IMAGE}
 
 COPY --chown=1001:1001 private/ /app/private/

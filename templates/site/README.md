@@ -14,7 +14,7 @@ Dockerfile      FROM the f0 engine image
 
 1. Copy this folder into a new repository and add your `content/`.
 2. Pin the engine: set `F0_IMAGE` in the Dockerfile (or as a Coolify build
-   variable) to a released tag or digest, e.g. `ghcr.io/adeinnovates/f0:1.0.0`.
+   variable) to a released tag or digest, e.g. `ghcr.io/folder0/f0:1.0.0`.
 3. Deploy with Coolify's Dockerfile build pack. Health check: `/_ready` on port 3000.
 4. Set settings in the runtime environment (see f0's README), never as build
    arguments.
