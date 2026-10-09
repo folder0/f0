@@ -56,7 +56,7 @@ describe('resolveF0Config', () => {
     expect(prod({ AUTH_MODE: 'privat', JWT_SECRET: SECRET }).warnings.join()).toMatch(/privat/)
   })
 
-  it.each([{}, { JWT_SECRET: 'change-me-in-production' }])('fails closed for a private site without a real secret (%j)', (env) => {
+  it.each<Record<string, string>>([{}, { JWT_SECRET: 'change-me-in-production' }])('fails closed for a private site without a real secret (%j)', (env) => {
     const config = prod({ AUTH_MODE: 'private', ...env })
     expect(config.problems).toHaveLength(1)
     expect(config.jwtSecret).toBe('')

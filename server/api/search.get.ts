@@ -194,9 +194,10 @@ function searchContent(items: ContentItem[], query: string): SearchResult[] {
     boost: { title: 4, path: 2, section: 1.5 },
   })
 
-  return hits.slice(0, 10).map((hit) => {
+  return hits.slice(0, 10).flatMap((hit) => {
     const item = items[hit.id as number]
-    return {
+    if (!item) return []
+    return [{
       title: item.title,
       path: item.path,
       // Center the excerpt on what actually matched (prefix and fuzzy hits
@@ -204,7 +205,7 @@ function searchContent(items: ContentItem[], query: string): SearchResult[] {
       excerpt: generateExcerpt(item.content, [...new Set([...hit.terms, ...terms])]),
       section: item.section,
       score: hit.score,
-    }
+    }]
   })
 }
 

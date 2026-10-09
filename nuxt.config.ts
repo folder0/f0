@@ -125,6 +125,10 @@ export default defineNuxtConfig({
   // ---------------------------------------------------------------------------
   
   nitro: {
+    typescript: {
+      tsConfig: { compilerOptions: { noUncheckedIndexedAccess: false } },
+    },
+
     // Security: Prevent serving files from /private directory
     // This is CRITICAL - allowlist.json must never be publicly accessible
     publicAssets: [
@@ -208,10 +212,15 @@ export default defineNuxtConfig({
   // TYPESCRIPT CONFIGURATION
   // ---------------------------------------------------------------------------
   
+  // `npm run typecheck` checks app, server, shared and config code (CI runs
+  // it). noUncheckedIndexedAccess is a Nuxt 4 default this codebase predates.
   typescript: {
     strict: true,
     // Disable type checking during dev - run 'npm run typecheck' separately
     typeCheck: false,
+    tsConfig: { compilerOptions: { noUncheckedIndexedAccess: false } },
+    sharedTsConfig: { compilerOptions: { noUncheckedIndexedAccess: false } },
+    nodeTsConfig: { compilerOptions: { noUncheckedIndexedAccess: false } },
   },
 
   // ---------------------------------------------------------------------------

@@ -23,7 +23,7 @@ let windowCount = 0
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig().public
-  if (config.rum !== true && config.rum !== 'true') {
+  if (String(config.rum) !== 'true') {
     throw createError({ statusCode: 404, statusMessage: 'Not Found' })
   }
 

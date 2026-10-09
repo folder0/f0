@@ -99,15 +99,15 @@ export function stringField(data: Record<string, unknown>, key: string): string 
 export function firstHeading(body: string): string | null {
   let fence: string | null = null
   for (const line of body.split('\n')) {
-    const marker = line.match(/^ {0,3}(`{3,}|~{3,})/)
+    const marker = line.match(/^ {0,3}(`{3,}|~{3,})/)?.[1]
     if (marker) {
-      if (!fence) fence = marker[1]
-      else if (marker[1][0] === fence[0] && marker[1].length >= fence.length && !line.slice(line.indexOf(marker[1]) + marker[1].length).trim()) fence = null
+      if (!fence) fence = marker
+      else if (marker[0] === fence[0] && marker.length >= fence.length && !line.slice(line.indexOf(marker) + marker.length).trim()) fence = null
       continue
     }
     if (fence) continue
-    const heading = line.match(/^ {0,3}#[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$/)
-    if (heading && heading[1].trim()) return heading[1].trim()
+    const heading = line.match(/^ {0,3}#[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$/)?.[1]?.trim()
+    if (heading) return heading
   }
   return null
 }

@@ -31,7 +31,7 @@
 import type { Element, Root, RootContent } from 'hast'
 import { fromParse5 } from 'hast-util-from-parse5'
 import { toHtml } from 'hast-util-to-html'
-import { parseFragment } from 'parse5'
+import { parseFragment, type DefaultTreeAdapterMap } from 'parse5'
 import { SKIP, visit } from 'unist-util-visit'
 
 const REMOVED_ELEMENTS = new Set([
@@ -156,7 +156,7 @@ const MAX_PASSES = 4
 
 /** Parse an HTML fragment the way a browser parses div.innerHTML / SSR body content. */
 function parseLikeBrowser(html: string): Root {
-  const fragment = parseFragment(DIV_CONTEXT as Parameters<typeof parseFragment>[0], html, { scriptingEnabled: true })
+  const fragment = parseFragment(DIV_CONTEXT as DefaultTreeAdapterMap['element'], html, { scriptingEnabled: true })
   return fromParse5(fragment) as Root
 }
 

@@ -132,7 +132,7 @@ async function scanBlogFolder(
         // Handle Date objects or strings
         const d = frontmatter.date
         if (d instanceof Date) {
-          date = d.toISOString().split('T')[0]
+          date = d.toISOString().slice(0, 10)
         } else {
           date = String(d)
         }
@@ -142,7 +142,7 @@ async function scanBlogFolder(
           date = filenameDate
         } else {
           const stats = await stat(filePath)
-          date = stats.mtime.toISOString().split('T')[0]
+          date = stats.mtime.toISOString().slice(0, 10)
         }
       }
 

@@ -55,6 +55,7 @@ PROPS:
 </template>
 
 <script setup lang="ts">
+import type { DeepReadonly } from 'vue'
 interface TocItem {
   id: string
   text: string
@@ -64,7 +65,7 @@ interface TocItem {
 
 // Props
 const props = defineProps<{
-  items: TocItem[]
+  items: readonly TocItem[] | readonly DeepReadonly<TocItem>[]
 }>()
 
 // Active section tracking

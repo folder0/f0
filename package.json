@@ -46,6 +46,7 @@
   },
   "devDependencies": {
     "@nuxt/eslint-config": "^0.3.10",
+    "@types/jsdom": "^30.0.0",
     "@types/jsonwebtoken": "^9.0.6",
     "@types/node": "^24.19.1",
     "axe-core": "^4.13.0",

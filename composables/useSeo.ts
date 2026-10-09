@@ -26,6 +26,8 @@
  * ```
  */
 
+import type { ResolvableMeta } from '@unhead/vue'
+
 interface SeoOptions {
   title?: string
   description?: string
@@ -86,7 +88,7 @@ export function useSeo(input: SeoOptions | (() => SeoOptions) = {}) {
   // Build meta array
   const meta = computed(() => {
     const options = getOptions()
-    const tags: Record<string, string>[] = [
+    const tags: ResolvableMeta[] = [
       { name: 'description', content: description.value },
 
       // Open Graph
@@ -139,15 +141,15 @@ export function useSeo(input: SeoOptions | (() => SeoOptions) = {}) {
   })
 
   const link = computed(() =>
-    canonicalUrl.value ? [{ rel: 'canonical', href: canonicalUrl.value }] : []
+    canonicalUrl.value ? [{ rel: 'canonical' as const, href: canonicalUrl.value }] : []
   )
 
   // Register once with reactive refs so the head updates as inputs change.
-  useHead({
-    title,
-    meta,
-    link,
-  })
+  useHead(() => ({
+    title: title.value,
+    meta: meta.value,
+    link: link.value,
+  }))
 
   return {
     title,

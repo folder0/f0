@@ -96,12 +96,12 @@ export async function pageChrome(contentDir: string, urlPath: string, filePath: 
   const pages = flatten(items)
   const index = pages.findIndex(page => page.path === path)
   if (index >= 0) {
-    chrome.prev = index > 0 ? pages[index - 1] : null
-    chrome.next = index < pages.length - 1 ? pages[index + 1] : null
+    chrome.prev = pages[index - 1] ?? null
+    chrome.next = pages[index + 1] ?? null
   }
   else if (section && path === normalize(section.path) && pages.length > 0) {
     // A section's landing page leads into its first page
-    chrome.next = pages[0]
+    chrome.next = pages[0] ?? null
   }
 
   return chrome

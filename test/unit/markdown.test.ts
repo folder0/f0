@@ -174,3 +174,11 @@ describe('authoring components', () => {
     expect(text).toBe('npm:\nUse npm.\npnpm:\nUse pnpm.')
   })
 })
+
+describe('one-line callouts', () => {
+  it('render instead of turning the page into an error box', async () => {
+    const { html } = await parseMarkdown('Intro.\n\n:::info A single line callout :::\n')
+    expect(html).not.toContain('Error rendering content')
+    expect(html).toMatch(/<div class="callout callout-info">\s*<p>A single line callout<\/p>\s*<\/div>/)
+  })
+})

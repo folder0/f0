@@ -32,6 +32,8 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Unit tests
         run: npm test
+      - name: Type check
+        run: npm run typecheck
       # Build with canary values in every secret-bearing variable. Settings are
       # read at runtime, so none of them may appear in the built output (that
       # output is what goes into the image).

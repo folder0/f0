@@ -12,7 +12,7 @@
 
 export default defineNuxtPlugin(() => {
   const config = useRuntimeConfig().public
-  const enabled = config.rum === true || config.rum === 'true'
+  const enabled = String(config.rum) === 'true'
   if (!enabled) return
 
   const sample = Number(config.rumSample)

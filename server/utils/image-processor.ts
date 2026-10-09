@@ -35,7 +35,7 @@ import { logger } from './logger'
 export interface ImageOptions {
   width?: number
   height?: number
-  format?: 'webp' | 'avif' | 'jpeg' | 'png' | 'original'
+  format?: 'webp' | 'avif' | 'jpeg' | 'jpg' | 'png' | 'original'
   quality?: number
 }
 
@@ -77,15 +77,17 @@ const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.avif', '.gif', '.s
 // SHARP LAZY LOADER
 // =============================================================================
 
-let sharpModule: typeof import('sharp') | null = null
+let sharpModule: Sharp | null = null
 let sharpAvailable = true
 
-async function getSharp(): Promise<typeof import('sharp') | null> {
+type Sharp = typeof import('sharp')['default']
+
+async function getSharp(): Promise<Sharp | null> {
   if (!sharpAvailable) return null
   if (sharpModule) return sharpModule
 
   try {
-    sharpModule = (await import('sharp')).default as unknown as typeof import('sharp')
+    sharpModule = (await import('sharp')).default
     return sharpModule
   } catch {
     logger.warn('sharp not available — image processing disabled, serving originals')

@@ -73,26 +73,27 @@ function hslToRgb(h: number, s: number, l: number): Rgb {
 export function parseColor(input: string): Rgb | null {
   const value = input.trim().toLowerCase()
 
-  const hex = value.match(/^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/)
+  const hex = value.match(/^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/)?.[1]
   if (hex) {
-    const digits = hex[1].length <= 4 ? hex[1].split('').map(d => d + d).join('') : hex[1]
+    const digits = hex.length <= 4 ? hex.split('').map(d => d + d).join('') : hex
     return [0, 2, 4].map(i => parseInt(digits.slice(i, i + 2), 16)) as Rgb
   }
 
   const fn = value.match(/^(rgba?|hsla?)\(([^)]*)\)$/)
-  if (!fn) return null
-  const parts = fn[2].split(/\s*\/\s*/)[0].split(/[\s,]+/).filter(Boolean)
-  if (parts.length < 3) return null
+  const [, kind = '', args = ''] = fn ?? []
+  if (!kind) return null
+  const [h = '', s = '', l = ''] = (args.split(/\s*\/\s*/)[0] ?? '').split(/[\s,]+/).filter(Boolean)
+  if (!l) return null
 
-  if (fn[1].startsWith('rgb')) {
-    const rgb = parts.slice(0, 3).map(channel)
+  if (kind.startsWith('rgb')) {
+    const rgb = [h, s, l].map(channel)
     return rgb.every(c => c !== null) ? rgb as Rgb : null
   }
 
-  const h = Number(parts[0].replace(/deg$/, ''))
-  const s = parts[1].endsWith('%') ? Number(parts[1].slice(0, -1)) / 100 : NaN
-  const l = parts[2].endsWith('%') ? Number(parts[2].slice(0, -1)) / 100 : NaN
-  return [h, s, l].every(Number.isFinite) ? hslToRgb(h, s, l) : null
+  const hue = Number(h.replace(/deg$/, ''))
+  const sat = s.endsWith('%') ? Number(s.slice(0, -1)) / 100 : NaN
+  const lig = l.endsWith('%') ? Number(l.slice(0, -1)) / 100 : NaN
+  return [hue, sat, lig].every(Number.isFinite) ? hslToRgb(hue, sat, lig) : null
 }
 
 // =============================================================================
@@ -109,13 +110,13 @@ function luminance([r, g, b]: Rgb): number {
 
 /** WCAG contrast ratio between two colors (1 to 21). */
 export function contrastRatio(a: Rgb, b: Rgb): number {
-  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
-  return (hi + 0.05) / (lo + 0.05)
+  const [la, lb] = [luminance(a), luminance(b)]
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
 }
 
 /** Mix `amount` (0 to 1) of `other` into `base`. */
 function mix(base: Rgb, other: Rgb, amount: number): Rgb {
-  return base.map((c, i) => clampByte(c + (other[i] - c) * amount)) as Rgb
+  return base.map((c, i) => clampByte(c + ((other[i] ?? c) - c) * amount)) as Rgb
 }
 
 function toHex(rgb: Rgb): string {

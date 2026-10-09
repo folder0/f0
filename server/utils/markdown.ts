@@ -116,8 +116,8 @@ function remarkYouTube() {
       const [, title, videoId] = match
       
       // Replace the paragraph with our custom YouTube node
-      // @ts-expect-error - Adding custom node type
-      parent.children[index] = {
+      const siblings = parent.children as unknown[]
+      siblings[index] = {
         type: 'youtube',
         data: {
           hName: 'div',
@@ -320,13 +320,16 @@ function remarkCallouts() {
       
       // Remove the closing ::: from last text node
       const lastIdx = newChildren.length - 1
-      if (newChildren[lastIdx].type === 'text') {
-        const lastText = (newChildren[lastIdx] as Text).value
-        (newChildren[lastIdx] as Text).value = lastText.replace(/\s*:::$/, '')
+      const lastNode = newChildren[lastIdx]
+      if (lastNode.type === 'text') {
+        // (Two statements: written as one expression across lines, the cast on
+        // the second line was parsed as a call and every one-line callout
+        // turned the page into an error box)
+        lastNode.value = lastNode.value.replace(/\s*:::$/, '')
       }
       
-      // @ts-expect-error - Adding custom node structure
-      parent.children[index] = {
+      const siblings = parent.children as unknown[]
+      siblings[index] = {
         type: 'callout',
         data: {
           hName: 'div',
@@ -617,8 +620,8 @@ function remarkApiEndpoints() {
         const summary = lines[0] || ''
         const description = lines.slice(1).join('\n').trim()
         
-        // @ts-expect-error - Adding custom node structure
-        parent.children[index] = {
+        const siblings = parent.children as unknown[]
+        siblings[index] = {
           type: 'apiEndpoint',
           data: {
             hName: 'div',
@@ -676,7 +679,6 @@ function remarkApiEndpoints() {
       
       // If we found a closing tag, transform the nodes
       if (endIndex < parent.children.length) {
-        // @ts-expect-error - Adding custom node structure
         const apiNode = {
           type: 'apiEndpoint',
           data: {
@@ -694,7 +696,8 @@ function remarkApiEndpoints() {
           ],
         }
         
-        parent.children.splice(index, endIndex - index + 1, apiNode)
+        const siblings = parent.children as unknown[]
+        siblings.splice(index, endIndex - index + 1, apiNode)
       }
     })
   }

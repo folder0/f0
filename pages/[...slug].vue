@@ -47,7 +47,7 @@
       <!-- Markdown content (docs layout) -->
       <ContentMarkdownRenderer 
         v-else-if="content?.type === 'markdown'"
-        :html="content.html" 
+        :html="content.html ?? ''" 
         :toc="content.toc"
         :title="content.title"
         :markdown="content.markdown"
@@ -59,7 +59,7 @@
       <!-- API documentation (OpenAPI/Postman) -->
       <ContentApiDocViewer
         v-else-if="content?.type === 'openapi' || content?.type === 'postman'"
-        :spec="{ ...content.spec, rawSpec: content.rawSpec }"
+        :spec="{ ...content.spec!, rawSpec: content.rawSpec ?? '' }"
       />
       
       <!-- Unknown type fallback -->

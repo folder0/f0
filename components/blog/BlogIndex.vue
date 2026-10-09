@@ -106,6 +106,7 @@ const { data, pending } = await useFetch<{
     dateFormat: 'long' | 'short' | 'relative'
     heroImage: string
     heroSubtitle: string
+    preset?: string
   }
   posts: Array<{
     title: string

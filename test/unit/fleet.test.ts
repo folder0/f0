@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-// @ts-expect-error plain ESM script without type declarations
 import { analyzeApp, looksLikeF0, probeSite } from '../../bin/f0-fleet.mjs'
 
 const app = (overrides = {}) => ({
@@ -70,8 +69,7 @@ describe('probeSite', () => {
 describe('inventory against a mock Coolify API', () => {
   it('lists f0 apps with flags and sends the bearer token', async () => {
     const { createServer } = await import('node:http')
-    // @ts-expect-error plain ESM script without type declarations
-    const { inventory } = await import('../../bin/f0-fleet.mjs')
+        const { inventory } = await import('../../bin/f0-fleet.mjs')
     const seenAuth: string[] = []
     const server = createServer((req, res) => {
       seenAuth.push(String(req.headers.authorization))

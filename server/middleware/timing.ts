@@ -16,6 +16,7 @@
  */
 
 import { logger } from '../utils/logger'
+import type { ServerResponse } from 'node:http'
 
 export default defineEventHandler(async (event) => {
   const start = performance.now()
@@ -74,12 +75,12 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  event.node.res.write = function (...args: Parameters<typeof originalWrite>) {
+  event.node.res.write = function (this: ServerResponse, ...args: Parameters<typeof originalWrite>) {
     setTimingHeader()
     return originalWrite.apply(this, args)
   } as typeof originalWrite
 
-  event.node.res.end = function (...args: Parameters<typeof originalEnd>) {
+  event.node.res.end = function (this: ServerResponse, ...args: Parameters<typeof originalEnd>) {
     setTimingHeader()
     return originalEnd.apply(this, args)
   } as typeof originalEnd
