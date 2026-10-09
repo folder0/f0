@@ -728,6 +728,23 @@ function rehypeExtractToc() {
 }
 
 /**
+ * Rehype plugin: resolve relative src on <img> written as raw HTML in
+ * Markdown (<img src="./assets/x.png">). Markdown images are handled earlier
+ * by rehypeResponsiveImages; raw HTML only becomes elements after rehype-raw.
+ */
+function rehypeResolveRawImageSources() {
+  return (tree: HastRoot) => {
+    visit(tree, 'element', (node: Element) => {
+      if (node.tagName !== 'img' && node.tagName !== 'source') return
+      const src = node.properties?.src
+      if (typeof src === 'string' && src) {
+        node.properties = { ...node.properties, src: resolveAssetUrl(src) }
+      }
+    })
+  }
+}
+
+/**
  * Rehype plugin to wrap code blocks with header (filename + copy button)
  * Detects language from class and adds metadata
  */
@@ -959,6 +976,7 @@ function getMarkdownProcessor() {
       // so heading anchors are unaffected.
       .use(rehypeDropTableWhitespace)
       .use(rehypeRaw)
+      .use(rehypeResolveRawImageSources)
       .use(rehypeRestoreTableWhitespace)
       .use(rehypeStripDangerous)
       // Convert to HTML string

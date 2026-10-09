@@ -27,7 +27,7 @@ import { resolveDirectoryConfig, defaultDirectoryConfig, type DirectoryConfig } 
 import { resolveContentSubdir } from '../../utils/paths'
 import { logger } from '../../utils/logger'
 import { f0Config } from '../../utils/f0-config'
-import { resolvePageTitle } from '../../utils/content-core'
+import { resolveAssetUrl, resolvePageTitle } from '../../utils/content-core'
 import { hiddenFromListings } from '../../utils/drafts'
 
 // =============================================================================
@@ -129,7 +129,9 @@ async function scanBlogPosts(
         ? (frontmatter.tags as string[]).map(t => String(t).toLowerCase())
         : []
       const excerpt = (frontmatter.excerpt as string) || generateExcerpt(bodyContent)
-      const coverImage = (frontmatter.cover_image as string) || undefined
+      const coverImage = typeof frontmatter.cover_image === 'string' && frontmatter.cover_image.trim()
+        ? resolveAssetUrl(frontmatter.cover_image)
+        : undefined
       const pinned = frontmatter.pinned === true
       const readingTime = calculateReadingTime(rawContent)
 

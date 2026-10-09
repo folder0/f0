@@ -20,7 +20,7 @@ import {
   extractDateFromFilename,
   isMarkdownFile,
 } from '../utils/markdown'
-import { resolveDirectoryConfig, defaultDirectoryConfig } from '../utils/config'
+import { resolveDirectoryConfig, defaultDirectoryConfig, defaultBlogPath } from '../utils/config'
 import { f0Config } from '../utils/f0-config'
 import { resolvePageTitle } from '../utils/content-core'
 import { hiddenFromListings } from '../utils/drafts'
@@ -42,9 +42,15 @@ export default defineEventHandler(async (event) => {
   const settings = f0Config()
   const query = getQuery(event)
 
+  // Without ?path=, serve the site's blog (it used to be an empty feed of the
+  // root folder on most sites)
+  const requestedPath = query.path === undefined
+    ? (defaultBlogPath(settings.contentDir) ?? undefined)
+    : query.path
+
   // Confine ?path= to the content directory (rejects '..', hidden segments,
   // symlink escapes). A missing directory yields an empty feed, uncached.
-  const target = await resolveContentSubdir(settings.contentDir, query.path)
+  const target = await resolveContentSubdir(settings.contentDir, requestedPath)
   if (!target.ok) {
     throw createError({ statusCode: 400, statusMessage: 'Bad Request', data: { message: 'Invalid path' } })
   }
@@ -58,10 +64,11 @@ export default defineEventHandler(async (event) => {
   const siteDescription = dirConfig.description || config.public.siteDescription || ''
   const feedTitle = dirConfig.title || siteName
   
-  // Build base URL from request
+  // Absolute links use the configured site URL; the request host only when
+  // none is set
   const host = getRequestHost(event) || 'localhost:3000'
   const protocol = getRequestProtocol(event) || 'http'
-  const baseUrl = `${protocol}://${host}`
+  const baseUrl = (config.public.siteUrl || `${protocol}://${host}`).replace(/\/$/, '')
 
   // Collect posts
   interface FeedItem {

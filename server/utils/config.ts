@@ -17,11 +17,11 @@
  * - C-OPS-ZERO-CONFIG-DEFAULT-008: Default is docs, no config needed
  */
 
-import { readFileSync, statSync } from 'fs'
+import { readdirSync, readFileSync, statSync } from 'fs'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'path'
 import { logger } from './logger'
 import { changeEnabled, f0Config } from './f0-config'
-import { readFrontmatter, resolveAssetUrl as resolveContentAssetUrl } from './content-core'
+import { readFrontmatter, resolveAssetUrl as resolveContentAssetUrl, stripOrderPrefix } from './content-core'
 import { onContentChange } from './invalidation'
 
 // =============================================================================
@@ -248,6 +248,29 @@ export function getConfigForPath(contentDir: string, contentPath: string, filePa
   const normalized = contentPath.replace(/^\//, '')
   const firstSegment = normalized.split('/')[0] || ''
   return resolveDirectoryConfig(contentDir, firstSegment)
+}
+
+
+/**
+ * The URL path of the site's blog, for /feed.xml without ?path=: the root when
+ * the root is a blog (F0_MODE=blog or a root _config.md), otherwise the first
+ * top-level folder whose _config.md declares the blog layout. Null when the
+ * site has no blog.
+ */
+export function defaultBlogPath(contentDir: string): string | null {
+  if (resolveDirectoryConfig(contentDir, '').layout === 'blog') return '/'
+  let names: string[] = []
+  try {
+    names = readdirSync(contentDir, { withFileTypes: true })
+      .filter(entry => entry.isDirectory() && !entry.name.startsWith('.') && !entry.name.startsWith('_'))
+      .map(entry => entry.name)
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+  }
+  catch {
+    return null
+  }
+  const blog = names.find(name => resolveDirectoryConfig(contentDir, name).layout === 'blog')
+  return blog ? `/${stripOrderPrefix(blog)}` : null
 }
 
 onContentChange('config', invalidateConfigCache)

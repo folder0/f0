@@ -127,14 +127,8 @@ const bodyHtml = computed(() => {
 })
 
 // Cover image source
-const coverImageSrc = computed(() => {
-  const img = props.content.blog?.coverImage
-  if (!img) return ''
-  if (img.startsWith('./') || img.startsWith('../')) {
-    return `/api/content/assets/${img.replace(/^\.\//, '')}`
-  }
-  return img
-})
+// The server resolves cover_image to its URL (same rule as body images)
+const coverImageSrc = computed(() => props.content.blog?.coverImage || '')
 
 // Format date
 const formattedDate = computed(() => {

@@ -27,7 +27,7 @@ import { getCachedContent } from '../../utils/cache'
 import { logger } from '../../utils/logger'
 import { hasHiddenSegment } from '../../utils/paths'
 import { f0Config } from '../../utils/f0-config'
-import { isDraft } from '../../utils/content-core'
+import { isDraft, resolveAssetUrl } from '../../utils/content-core'
 
 export default defineEventHandler(async (event) => {
   const settings = f0Config()
@@ -127,7 +127,7 @@ export default defineEventHandler(async (event) => {
           date,
           author: (fm.author as string) || dirConfig.defaultAuthor || '',
           tags: Array.isArray(fm.tags) ? (fm.tags as string[]).map((t: unknown) => String(t).toLowerCase()) : [],
-          coverImage: (fm.cover_image as string) || undefined,
+          coverImage: typeof fm.cover_image === 'string' && fm.cover_image.trim() ? resolveAssetUrl(fm.cover_image) : undefined,
           excerpt: (fm.excerpt as string) || generateExcerpt(bodyContent),
           pinned: fm.pinned === true,
           readingTime: calculateReadingTime(cached.rawMarkdown),

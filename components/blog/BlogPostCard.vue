@@ -62,13 +62,8 @@ const props = defineProps<{
 
 const basePath = computed(() => props.basePath || '/blog')
 
-const coverImageSrc = computed(() => {
-  if (!props.post.coverImage) return ''
-  if (props.post.coverImage.startsWith('./') || props.post.coverImage.startsWith('../')) {
-    return `/api/content/assets/${props.post.coverImage.replace(/^\.\//, '')}`
-  }
-  return props.post.coverImage
-})
+// The server resolves cover_image to its URL (same rule as body images)
+const coverImageSrc = computed(() => props.post.coverImage || '')
 
 function formatDate(dateStr: string): string {
   try {
