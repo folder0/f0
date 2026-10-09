@@ -14,7 +14,8 @@
     "typecheck": "nuxt typecheck",
     "validate": "node bin/validate.mjs",
     "test": "vitest run",
-    "test:contract": "vitest run --config vitest.contract.config.ts"
+    "test:contract": "vitest run --config vitest.contract.config.ts",
+    "fleet": "node bin/f0-fleet.mjs"
   },
   "bin": {
     "f0": "./bin/validate.mjs"

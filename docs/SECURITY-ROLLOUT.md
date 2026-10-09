@@ -8,7 +8,13 @@ Do steps 1 and 2 **now**, before merging anything. They fix exposure that alread
 
 Until this release, a site configured with `AUTH_MODE=private` only at runtime (for example in Coolify's environment, not during the build) was served **publicly**. Only the `NUXT_AUTH_MODE` name took effect at runtime.
 
-For each site that should be private:
+To check every site on a Coolify server at once, run the read-only inventory with a short-lived read-only API token. It flags sites that are meant to be private but are public, secrets available at build time, and health checks on `/`. It never prints secret values.
+
+```bash
+COOLIFY_URL=https://coolify.example.com COOLIFY_TOKEN=<read-only token> npm run fleet -- --probe
+```
+
+Or check one site by hand. For each site that should be private:
 
 ```bash
 curl -sI https://docs.example.com/guides | head -3
