@@ -276,7 +276,7 @@ Add authorized emails to `/private/allowlist.json`:
 
 `admins` lists who may use the admin API (content upload, audit logs). If it is missing or empty, nobody is an admin.
 
-Configure AWS SES for email delivery. Flow: email challenge → 8-digit OTP → JWT token → access granted. Logging out revokes the session immediately, and removing someone from the allowlist ends their access on their next request.
+Configure AWS SES for email delivery. Flow: email challenge → 8-digit OTP → JWT token → access granted. In the browser the session lives only in an httpOnly cookie that page scripts cannot read; `GET /api/auth/session` reports who is signed in. API clients can send the token returned by `/api/auth/verify-otp` as `Authorization: Bearer <token>`. Logging out revokes the session immediately, and removing someone from the allowlist ends their access on their next request.
 
 ---
 
@@ -339,6 +339,8 @@ Checks: frontmatter YAML, image references, heading hierarchy, title resolution,
 | `/_ready` | GET | Readiness probe |
 | `/api/auth/request-otp` | POST | Request OTP (private mode) |
 | `/api/auth/verify-otp` | POST | Verify OTP (private mode) |
+| `/api/auth/session` | GET | Who is signed in (from the session cookie) |
+| `/api/auth/logout` | POST | End the session and clear the cookie |
 | `/api/webhook` | POST | GitHub webhook for content sync |
 
 ---

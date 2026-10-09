@@ -13,9 +13,16 @@
  * FEATURES:
  * - Reactive authentication state
  * - OTP request and verification
- * - Token management
  * - Automatic redirect after login
+ *
+ * SESSIONS: the session token lives only in the httpOnly `f0_token` cookie,
+ * which page scripts cannot read. State comes from GET /api/auth/session.
+ * Earlier versions also kept the token in localStorage; it is removed there
+ * on first load.
  */
+
+/** localStorage key used by earlier versions to hold the session token. */
+const LEGACY_TOKEN_KEY = 'f0_token'
 
 interface User {
   email: string
@@ -51,7 +58,6 @@ export function useAuth() {
     error: null,
   }))
   
-  const config = useRuntimeConfig()
   const router = useRouter()
   
   /**
@@ -64,51 +70,49 @@ export function useAuth() {
   })
   
   /**
-   * Initialize auth state from stored token
+   * Initialize auth state from the session cookie
    */
   async function initAuth() {
     state.value.loading = true
-    
-    // Check for token in localStorage
+
     if (import.meta.client) {
-      const token = localStorage.getItem('f0_token')
-      
-      if (token) {
-        try {
-          // Verify token by decoding (basic check)
-          const payload = parseJwt(token)
-          
-          if (payload && payload.exp && payload.exp * 1000 > Date.now()) {
-            state.value.isAuthenticated = true
-            state.value.user = { email: payload.email }
-          } else {
-            // Token expired
-            localStorage.removeItem('f0_token')
-          }
-        } catch {
-          localStorage.removeItem('f0_token')
-        }
+      // Drop a token left by earlier versions; the cookie is the session.
+      try {
+        localStorage.removeItem(LEGACY_TOKEN_KEY)
+      }
+      catch {
+        // storage unavailable (private browsing, blocked site data)
+      }
+
+      try {
+        const session = await $fetch<{ authenticated: boolean, user?: User }>('/api/auth/session')
+        state.value.isAuthenticated = session.authenticated
+        state.value.user = session.authenticated && session.user ? session.user : null
+      }
+      catch {
+        state.value.isAuthenticated = false
+        state.value.user = null
       }
     }
-    
+
     state.value.loading = false
   }
-  
+
   /**
-   * Parse JWT payload (client-side only, no verification)
+   * Read the email from a JWT payload (no verification; display only)
    */
-  function parseJwt(token: string): { email: string; exp: number } | null {
+  function emailFromJwt(token: string): string | null {
     try {
       const parts = token.split('.')
       if (parts.length !== 3) return null
-      
-      const payload = JSON.parse(atob(parts[1]))
-      return payload
-    } catch {
+      const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')))
+      return typeof payload?.email === 'string' ? payload.email : null
+    }
+    catch {
       return null
     }
   }
-  
+
   /**
    * Request OTP for email
    */
@@ -138,23 +142,15 @@ export function useAuth() {
     try {
       const response = await $fetch<{
         success: boolean
-        token: string
         user: User
       }>('/api/auth/verify-otp', {
         method: 'POST',
         body: { email, code },
       })
       
-      if (response.success && response.token) {
-        // Store token
-        if (import.meta.client) {
-          localStorage.setItem('f0_token', response.token)
-        }
-        
-        // Update state
-        state.value.isAuthenticated = true
-        state.value.user = response.user
-        
+      if (response.success && response.user) {
+        // The server set the httpOnly session cookie; only update state.
+        login(response.user)
         return { success: true }
       }
       
@@ -169,18 +165,16 @@ export function useAuth() {
   }
   
   /**
-   * Login with token (used after OTP verification or for direct token injection)
+   * Mark the user as signed in after OTP verification. The session itself is
+   * the cookie the server just set. Accepts the user from the verify response,
+   * or (for older callers) a token, which is only read for the email and is
+   * never stored.
    */
-  function login(token: string) {
-    if (import.meta.client) {
-      localStorage.setItem('f0_token', token)
-    }
-    
-    // Parse token to get user info
-    const payload = parseJwt(token)
-    if (payload) {
+  function login(user: User | string) {
+    const email = typeof user === 'string' ? emailFromJwt(user) : user?.email
+    if (email) {
       state.value.isAuthenticated = true
-      state.value.user = { email: payload.email }
+      state.value.user = { email }
     }
   }
   
@@ -191,17 +185,18 @@ export function useAuth() {
     if (import.meta.client) {
       // End the session on the server: revokes the token and clears the
       // httpOnly cookie. Ignore failures so logout never gets stuck.
-      const stored = localStorage.getItem('f0_token')
       try {
-        await $fetch('/api/auth/logout', {
-          method: 'POST',
-          headers: stored ? { Authorization: `Bearer ${stored}` } : undefined,
-        })
+        await $fetch('/api/auth/logout', { method: 'POST' })
       }
       catch {
         // fall through to local cleanup
       }
-      localStorage.removeItem('f0_token')
+      try {
+        localStorage.removeItem(LEGACY_TOKEN_KEY)
+      }
+      catch {
+        // storage unavailable
+      }
     }
     
     state.value.isAuthenticated = false
@@ -212,15 +207,11 @@ export function useAuth() {
   }
   
   /**
-   * Get authorization header for API requests
+   * Authorization header for API requests. Same-origin requests carry the
+   * session cookie automatically, so there is nothing to add; kept so
+   * existing callers keep working.
    */
   function getAuthHeader(): Record<string, string> {
-    if (import.meta.client) {
-      const token = localStorage.getItem('f0_token')
-      if (token) {
-        return { Authorization: `Bearer ${token}` }
-      }
-    }
     return {}
   }
   

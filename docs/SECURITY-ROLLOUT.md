@@ -58,6 +58,7 @@ Expect conflicts where the fork changed the same files (for example `server/midd
 |--------|-----------------------|--------|
 | Admin API needs an explicit `admins` list | Uploads and audit logs return 403 for everyone | Add `"admins": [...]` to `private/allowlist.json` for the people who upload |
 | Logout ends the session on the server; removed users lose access on their next request | Copied tokens stop working after logout | None |
+| Browser sessions use only the httpOnly cookie; the token is no longer kept in `localStorage` (old copies are deleted on the next visit) | None for readers. Fork code that read `localStorage.f0_token` or `getAuthHeader()` gets nothing back; same-origin requests already send the cookie | Drop any custom `Authorization` header in fork pages; use `GET /api/auth/session` for the signed-in user |
 | Private mode no longer exempts files by extension | Images and other assets need a login on private sites | None (this was the leak) |
 | Private-mode responses are `Cache-Control: private, no-store` | CDN stops caching private content | Remove any CDN rule that cached `/api/content/*`, `/llms.txt` or pages on private sites |
 | `?path=` on `/api/blog`, `/api/blog/tags`, `/feed.xml` rejects `..` and hidden folders | Such requests return 400 | None |

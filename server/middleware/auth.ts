@@ -51,6 +51,7 @@ const PUBLIC_ROUTES = [
   '/api/auth/request-otp',
   '/api/auth/verify-otp',
   '/api/auth/logout',       // must always run so it can clear the cookie
+  '/api/auth/session',      // answers "not signed in" instead of 401
   '/_health',
   '/_ready',
   // GitHub webhook authenticates itself via HMAC signature (see webhook.post.ts).

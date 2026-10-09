@@ -177,7 +177,9 @@ export default defineEventHandler(async (event) => {
   return {
     success: true,
     message: 'Authentication successful',
-    token, // Also return in body for API clients
+    // For API clients (scripts, agents) that send it as a Bearer token.
+    // Browsers keep using the httpOnly cookie and do not store this.
+    token,
     user: {
       email,
     },

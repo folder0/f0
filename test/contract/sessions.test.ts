@@ -2,8 +2,9 @@
  * Private-mode sessions and admin access: explicit admins, revocable logout,
  * immediate effect of allowlist removals, SVG handling, login redirects.
  */
-import { statSync, utimesSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { get, mintToken, prepareSite, startServer, type RunningServer, type Site } from './harness'
 
@@ -142,6 +143,39 @@ describe('allowlist reloads', () => {
     finally {
       await brokenServer.stop()
       broken.cleanup()
+    }
+  })
+})
+
+describe('browser session state', () => {
+  const session = (headers: Record<string, string> = {}) => get(`${server.url}/api/auth/session`, { headers })
+
+  it('reports an anonymous visitor as signed out, without a 401', async () => {
+    const response = await session()
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ authMode: 'private', authenticated: false })
+    expect(response.headers.get('cache-control')).toBe('private, no-store')
+  })
+
+  it('reports the signed-in user from the httpOnly cookie', async () => {
+    const body = await (await session({ cookie: `f0_token=${mintToken('reader@example.com')}` })).json()
+    expect(body).toEqual({ authMode: 'private', authenticated: true, user: { email: 'reader@example.com' } })
+  })
+
+  it('reports revoked and garbage sessions as signed out', async () => {
+    const token = mintToken('reader@example.com', { jti: 'contract-session-revoked' })
+    await get(`${server.url}/api/auth/logout`, { method: 'POST', headers: { cookie: `f0_token=${token}` } })
+    expect((await (await session({ cookie: `f0_token=${token}` })).json()).authenticated).toBe(false)
+    expect((await (await session({ cookie: 'f0_token=garbage' })).json()).authenticated).toBe(false)
+  })
+
+  it('ships no client code that writes the session token to localStorage', () => {
+    const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../.output/public/_nuxt')
+    const bundles = readdirSync(root).filter(name => name.endsWith('.js')).map(name => readFileSync(join(root, name), 'utf-8'))
+    expect(bundles.length).toBeGreaterThan(0)
+    for (const code of bundles) {
+      expect(code).not.toMatch(/setItem\([^)]{0,40}f0_token/)
+      expect(code).not.toMatch(/Bearer \$\{/)
     }
   })
 })

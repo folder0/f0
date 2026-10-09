@@ -102,6 +102,12 @@ describe('public mode baseline', () => {
     expect(response.headers.get('x-image-processed')).toBe('true')
   })
 
+  it('reports public mode and no session from /api/auth/session', async () => {
+    const response = await get(`${server.url}/api/auth/session`)
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ authMode: 'public', authenticated: false })
+  })
+
   it('keeps admin endpoints closed in public mode', async () => {
     expect((await get(`${server.url}/api/admin/audit-logs`)).status).toBe(403)
   })
