@@ -1,0 +1,4 @@
+{
+  "emails": ["reader@example.com", "admin@example.com"],
+  "admins": ["admin@example.com"]
+}

@@ -13,7 +13,8 @@
     "lint": "eslint .",
     "typecheck": "nuxt typecheck",
     "validate": "node bin/validate.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:contract": "vitest run --config vitest.contract.config.ts"
   },
   "bin": {
     "f0": "./bin/validate.mjs"

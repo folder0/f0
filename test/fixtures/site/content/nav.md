@@ -1,0 +1,3 @@
+- [Home](/)
+- [Guides](/guides)
+- [Blog](/blog)
