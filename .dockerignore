@@ -1,0 +1,40 @@
+# Keep the Docker build context to tracked build inputs.
+# Without this file a local `docker build .` sends node_modules, build output,
+# git history and .env files into the context, and the host's (often macOS)
+# node_modules overwrite the Linux ones installed in the deps stage.
+#
+# content/ and private/ are intentionally NOT ignored: the current Dockerfile
+# still copies them into the image.
+
+# Version control
+.git
+.github
+
+# Dependencies and build output
+node_modules
+.output
+.nuxt
+.nitro
+.cache
+dist
+coverage
+
+# Generated image variants inside content
+content/.cache
+
+# Secrets and local environment
+.env
+.env.*
+
+# Docker files (not needed inside the context; Coolify also writes its own
+# docker-compose file here, which would otherwise bust the build cache)
+Dockerfile*
+docker-compose*.yml
+docker-compose*.yaml
+.dockerignore
+
+# Logs, OS and editor files
+*.log
+.DS_Store
+.vscode
+.idea

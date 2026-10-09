@@ -12,13 +12,14 @@
     "postinstall": "nuxt prepare",
     "lint": "eslint .",
     "typecheck": "nuxt typecheck",
-    "validate": "node bin/validate.mjs"
+    "validate": "node bin/validate.mjs",
+    "test": "vitest run"
   },
   "bin": {
     "f0": "./bin/validate.mjs"
   },
   "dependencies": {
-    "@aws-sdk/client-ses": "^3.525.0",
+    "@aws-sdk/client-ses": "^3.1147.0",
     "jsonwebtoken": "^9.0.2",
     "mermaid": "^11.4.0",
     "mrmime": "^2.0.0",
@@ -28,24 +29,24 @@
     "remark-gfm": "^4.0.0",
     "remark-parse": "^11.0.0",
     "remark-rehype": "^11.1.0",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.5",
     "unified": "^11.0.4",
     "unist-util-visit": "^5.0.0",
     "yaml": "^2.4.1"
   },
   "devDependencies": {
-    "@nuxt/devtools": "^1.0.8",
     "@nuxt/eslint-config": "^0.3.10",
     "@types/jsonwebtoken": "^9.0.6",
-    "@types/node": "^20.11.24",
+    "@types/node": "^24.19.1",
     "eslint": "^8.57.0",
-    "nuxt": "^3.10.3",
+    "nuxt": "^3.21.11",
     "typescript": "^5.3.3",
+    "vitest": "^5.0.3",
     "vue": "^3.4.21",
     "vue-router": "^4.3.0",
     "vue-tsc": "^2.0.6"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.12.0"
   }
 }

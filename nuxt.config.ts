@@ -24,8 +24,12 @@ export default defineNuxtConfig({
   // CORE SETTINGS
   // ---------------------------------------------------------------------------
   
-  // Enable Vue devtools in development
-  devtools: { enabled: true },
+  // Vue devtools: development only. Enabling it unconditionally loads the
+  // @nuxt/devtools module into production builds as well.
+  devtools: { enabled: false },
+  $development: {
+    devtools: { enabled: true },
+  },
 
   // Enable server-side rendering for SEO and AI crawlers
   ssr: true,

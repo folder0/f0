@@ -15,23 +15,27 @@
 #   - Set build context to repository root
 #   - Configure persistent volumes for /app/content and /app/private
 
+# Base image: Node 24 LTS (Node 20 reached end of life on 2026-04-30), pinned to an
+# exact version and multi-arch digest so builds are reproducible. Bump deliberately.
+ARG NODE_IMAGE=node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+
 # =============================================================================
 # STAGE 1: Dependencies
 # =============================================================================
-FROM node:20-alpine AS deps
+FROM ${NODE_IMAGE} AS deps
 
 WORKDIR /app
 
 # Copy package files
 COPY package.json package-lock.json* ./
 
-# Install dependencies
-RUN npm ci --only=production=false
+# Install all dependencies (dev dependencies are needed to build)
+RUN npm ci --no-audit --no-fund
 
 # =============================================================================
 # STAGE 2: Builder
 # =============================================================================
-FROM node:20-alpine AS builder
+FROM ${NODE_IMAGE} AS builder
 
 WORKDIR /app
 
@@ -53,7 +57,7 @@ RUN npm run build
 # =============================================================================
 # STAGE 3: Runner (Production)
 # =============================================================================
-FROM node:20-alpine AS runner
+FROM ${NODE_IMAGE} AS runner
 
 WORKDIR /app
 

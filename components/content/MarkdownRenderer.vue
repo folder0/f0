@@ -123,16 +123,23 @@ function setupLazyImages() {
   })
 }
 
+// Mermaid is browser-only. The import.meta.client ternary is constant-folded at
+// build time, so the server bundle never references 'mermaid' and Nitro does not
+// trace mermaid and its dependency graph into .output/server.
+const loadMermaid = () => import.meta.client
+  ? import('mermaid')
+  : Promise.reject(new Error('mermaid is client-only'))
+
 // Initialize mermaid diagrams
 async function setupMermaid() {
   if (!contentRef.value) return
-  
+
   const mermaidBlocks = contentRef.value.querySelectorAll('.mermaid[data-mermaid="true"]')
   if (mermaidBlocks.length === 0) return
-  
+
   // Dynamically import mermaid only when needed
   try {
-    const mermaid = await import('mermaid')
+    const mermaid = await loadMermaid()
     
     // Initialize mermaid with beautiful-mermaid inspired config
     mermaid.default.initialize({
