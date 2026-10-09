@@ -27,6 +27,7 @@ describe('private mode baseline', () => {
   it('rejects anonymous API requests with 401', async () => {
     expect((await get(`${server.url}/api/content/guides/intro`)).status).toBe(401)
     expect((await get(`${server.url}/llms.txt`)).status).not.toBe(200)
+    expect((await get(`${server.url}/llms-full.txt`)).status).not.toBe(200)
   })
 
   it('redirects anonymous page requests to the login page', async () => {

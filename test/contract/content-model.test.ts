@@ -160,3 +160,21 @@ describe('site search quality', () => {
   })
 })
 
+describe('/llms-full.txt', () => {
+  const strip = (text: string) => text.replace(/^.*(GENERATED|Generated at).*$/gm, '')
+
+  it('serves the same full text as /llms.txt, with sections', async () => {
+    const full = await (await get(`${server.url}/llms-full.txt`)).text()
+    expect(strip(full)).toBe(strip(await (await get(`${server.url}/llms.txt`)).text()))
+    const section = await (await get(`${server.url}/llms-full.txt?section=reference`)).text()
+    expect(section).toContain('Reference body.')
+    expect(section).not.toContain('Intro body.')
+  })
+
+  it('is announced from /llms.txt before /llms.txt changes shape', async () => {
+    const response = await get(`${server.url}/llms.txt`)
+    expect(response.headers.get('link')).toBe('</llms-full.txt>; rel="alternate"; type="text/plain"')
+    expect(response.headers.get('x-f0-notice')).toMatch(/llms-full\.txt/)
+  })
+})
+

@@ -157,6 +157,12 @@ export default defineNuxtConfig({
           'content-type': 'text/plain; charset=utf-8'
         } 
       },
+      '/llms-full.txt': { 
+        headers: { 
+          'cache-control': 'public, max-age=3600',
+          'content-type': 'text/plain; charset=utf-8'
+        } 
+      },
       
       // llms-index.txt - same caching as llms.txt
       '/llms-index.txt': {

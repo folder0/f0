@@ -240,6 +240,10 @@ GET /llms.txt?section=api            → Only /api content
 
 Output is plain text with hierarchical path headers, stripped of all UI chrome. Pre-computed at startup and cached with content-hash invalidation.
 
+### `/llms-full.txt` — Full Context (llmstxt.org location)
+
+The same full text as `/llms.txt`, at the location the [llms.txt convention](https://llmstxt.org) uses. **Notice:** a later release turns `/llms.txt` into the convention's short index of links; agents that want the full text should switch to `/llms-full.txt` now. `/llms.txt` responses carry a `Link` and an `X-F0-Notice` header saying so.
+
 ### `/llms-index.txt` — Discovery
 
 ```
