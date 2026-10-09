@@ -13,7 +13,7 @@
 -->
 
 <template>
-  <div class="login-container">
+  <main class="login-container">
     <Head>
       <Title>Login - {{ siteName }}</Title>
     </Head>
@@ -99,7 +99,7 @@
     <p class="login-footer">
       Protected documentation powered by f0
     </p>
-  </div>
+  </main>
 </template>
 
 <script setup lang="ts">

@@ -61,7 +61,7 @@
     </div>
     
     <!-- Previous / Next Post Navigation -->
-    <nav v-if="prevPost || nextPost" class="blog-post-nav">
+    <nav v-if="prevPost || nextPost" class="blog-post-nav" aria-label="Previous and next posts">
       <NuxtLink v-if="prevPost" :to="prevPost.path" class="blog-post-nav-link prev">
         <span class="blog-post-nav-label">← Previous</span>
         <span class="blog-post-nav-title">{{ prevPost.title }}</span>

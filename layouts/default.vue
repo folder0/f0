@@ -43,7 +43,7 @@
         <div v-if="partials?.footer" class="f0-partial f0-footer-partial" v-html="partials.footer" />
         <div class="footer-content">
           <span v-if="brand.footerText" class="footer-text">{{ brand.footerText }}</span>
-          <nav v-if="brand.footerLinks && brand.footerLinks.length > 0" class="footer-links">
+          <nav v-if="brand.footerLinks && brand.footerLinks.length > 0" class="footer-links" aria-label="Footer">
             <template v-for="link in brand.footerLinks" :key="link.url">
               <a
                 v-if="link.url.startsWith('http')"

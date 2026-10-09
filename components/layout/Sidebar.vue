@@ -54,7 +54,7 @@ PROPS:
     />
     
     <!-- Docs navigation tree -->
-    <nav v-else class="sidebar-nav">
+    <nav v-else class="sidebar-nav" aria-label="Section">
       <div
         v-for="item in currentSidebar"
         :key="item.path"

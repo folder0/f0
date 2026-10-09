@@ -40,7 +40,7 @@ USAGE:
     </NuxtLink>
     
     <!-- Top Navigation -->
-    <nav class="header-nav">
+    <nav class="header-nav" aria-label="Main">
       <NuxtLink
         v-for="item in topNav"
         :key="item.path"
