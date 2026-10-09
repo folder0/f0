@@ -48,6 +48,8 @@ export interface F0Config {
   drafts: 'unlisted' | '404'
   /** Behavior changes switched off with F0_FLAGS=-name (one release only). */
   disabledChanges: ChangeName[]
+  /** "Edit this page" URL template with {path} (relative to contentDir); '' for none. */
+  editUrl: string
   /** Misconfigurations that must stop the site from serving (fail closed). */
   problems: string[]
   /** Settings that work but deserve attention. */
@@ -137,6 +139,11 @@ export function resolveF0Config(env: Env = process.env): F0Config {
     warnings.push(`F0_DRAFTS "${draftsSetting}" is not "unlisted" or "404"; using "unlisted"`)
   }
 
+  const editUrl = read(env, 'NUXT_PUBLIC_EDIT_URL', 'F0_EDIT_URL')
+  if (editUrl && !editUrl.includes('{path}')) {
+    warnings.push('F0_EDIT_URL has no {path} placeholder and is ignored, e.g. https://github.com/acme/docs/edit/main/content/{path}')
+  }
+
   const disabledChanges: ChangeName[] = []
   for (const flag of read(env, 'NUXT_F0_FLAGS', 'F0_FLAGS').split(',').map(f => f.trim()).filter(Boolean)) {
     const name = flag.replace(/^-/, '')
@@ -163,6 +170,7 @@ export function resolveF0Config(env: Env = process.env): F0Config {
     imageCacheDir: read(env, 'NUXT_IMAGE_CACHE_DIR', 'F0_IMAGE_CACHE_DIR') || join(tmpdir(), 'f0-image-cache'),
     drafts,
     disabledChanges,
+    editUrl: editUrl.includes('{path}') ? editUrl : '',
     problems,
     warnings,
   }

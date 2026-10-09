@@ -18,7 +18,7 @@
  * - C-PERF-CACHE-MTIME-010: Cache invalidation uses filesystem mtime
  */
 
-import { basename } from 'path'
+import { basename, relative, resolve } from 'path'
 import { isMarkdownFile, isJsonSpecFile, extractFrontmatter, generateExcerpt, calculateReadingTime, extractDateFromFilename } from '../../utils/markdown'
 import { resolveContentPath } from '../../utils/navigation'
 import { parseApiSpec } from '../../utils/openapi-parser'
@@ -27,7 +27,8 @@ import { getCachedContent } from '../../utils/cache'
 import { logger } from '../../utils/logger'
 import { hasHiddenSegment } from '../../utils/paths'
 import { f0Config } from '../../utils/f0-config'
-import { isDraft, resolveAssetUrl } from '../../utils/content-core'
+import { fileToUrlPath, isDraft, resolveAssetUrl } from '../../utils/content-core'
+import { pageChrome } from '../../utils/page-chrome'
 
 export default defineEventHandler(async (event) => {
   const settings = f0Config()
@@ -96,6 +97,12 @@ export default defineEventHandler(async (event) => {
         path: `/${contentSlug}`,
         layout,
         draft,
+      }
+      
+      // Breadcrumbs, previous/next and edit link (docs pages)
+      if (layout === 'docs') {
+        // Canonical URL from the file, so alias URLs (/guides/01-intro) match the sidebar
+        response.chrome = await pageChrome(settings.contentDir, fileToUrlPath(relative(resolve(settings.contentDir), resolve(filePath))), filePath)
       }
       
       // Add blog metadata when layout is blog

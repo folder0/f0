@@ -52,6 +52,7 @@
         :title="content.title"
         :markdown="content.markdown"
         :path="content.path"
+        :chrome="content.chrome"
       />
       
       <!-- API documentation (OpenAPI/Postman) -->
@@ -88,6 +89,12 @@ interface ContentResponse {
   path?: string      // Page path for download feature
   layout?: 'docs' | 'blog'
   draft?: boolean
+  chrome?: {
+    breadcrumbs: { title: string, path: string | null }[]
+    prev: { title: string, path: string | null } | null
+    next: { title: string, path: string | null } | null
+    editUrl: string | null
+  }
   rawSpec?: string   // Original spec file, for the download button
   blog?: {
     date: string
@@ -123,7 +130,7 @@ const { data: content, pending, error } = await useFetch<ContentResponse>(
     watch: [slug],
     // Only what the page uses goes into the HTML payload (frontmatter is
     // already reflected in title, blog and draft)
-    pick: ['type', 'title', 'description', 'html', 'toc', 'spec', 'rawSpec', 'markdown', 'path', 'layout', 'draft', 'blog'],
+    pick: ['type', 'title', 'description', 'html', 'toc', 'spec', 'rawSpec', 'markdown', 'path', 'layout', 'draft', 'blog', 'chrome'],
     // Suppress 404 console noise — blog directories legitimately 404 here
     onResponseError({ response }) {
       if (response.status !== 404) {

@@ -22,6 +22,17 @@ PROPS:
 
 <template>
   <div class="markdown-page">
+    <!-- Where this page sits: section and folders, from the sidebar -->
+    <nav v-if="chrome?.breadcrumbs?.length" class="f0-breadcrumbs" aria-label="Breadcrumb">
+      <ol>
+        <li v-for="(crumb, index) in chrome.breadcrumbs" :key="index">
+          <NuxtLink v-if="crumb.path" :to="crumb.path">{{ crumb.title }}</NuxtLink>
+          <span v-else>{{ crumb.title }}</span>
+        </li>
+        <li v-if="title" aria-current="page">{{ title }}</li>
+      </ol>
+    </nav>
+
     <!-- Page header with title and copy button -->
     <div class="page-header" v-if="title || !htmlHasH1">
       <h1 v-if="title && !htmlHasH1" class="page-title">{{ title }}</h1>
@@ -41,6 +52,27 @@ PROPS:
       class="markdown-content"
       v-html="html"
     />
+
+    <!-- Edit link and previous/next pages, in sidebar order -->
+    <footer v-if="chrome && (chrome.prev || chrome.next || chrome.editUrl)" class="f0-page-footer">
+      <a
+        v-if="chrome.editUrl"
+        :href="chrome.editUrl"
+        class="f0-edit-link"
+        target="_blank"
+        rel="noopener noreferrer"
+      >Edit this page</a>
+      <nav v-if="chrome.prev || chrome.next" class="f0-pager" aria-label="Previous and next pages">
+        <NuxtLink v-if="chrome.prev?.path" :to="chrome.prev.path" class="f0-pager-link f0-pager-prev" rel="prev">
+          <span class="f0-pager-label">Previous</span>
+          <span class="f0-pager-title">{{ chrome.prev.title }}</span>
+        </NuxtLink>
+        <NuxtLink v-if="chrome.next?.path" :to="chrome.next.path" class="f0-pager-link f0-pager-next" rel="next">
+          <span class="f0-pager-label">Next</span>
+          <span class="f0-pager-title">{{ chrome.next.title }}</span>
+        </NuxtLink>
+      </nav>
+    </footer>
   </div>
 </template>
 
@@ -54,6 +86,12 @@ const props = defineProps<{
   title?: string
   markdown?: string
   path?: string
+  chrome?: {
+    breadcrumbs: { title: string, path: string | null }[]
+    prev: { title: string, path: string | null } | null
+    next: { title: string, path: string | null } | null
+    editUrl: string | null
+  }
 }>()
 
 // Check if HTML already has an H1
@@ -263,6 +301,103 @@ watch(() => props.html, () => {
 </script>
 
 <style scoped>
+.f0-breadcrumbs {
+  margin-bottom: var(--spacing-4, 1rem);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.f0-breadcrumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-1, 0.25rem);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.f0-breadcrumbs li + li::before {
+  content: '/';
+  margin-right: var(--spacing-1, 0.25rem);
+  color: var(--color-text-tertiary);
+}
+
+.f0-breadcrumbs a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.f0-breadcrumbs a:hover {
+  color: var(--color-accent);
+}
+
+.f0-breadcrumbs [aria-current='page'] {
+  color: var(--color-text-primary);
+}
+
+.f0-page-footer {
+  margin-top: var(--spacing-12, 3rem);
+  padding-top: var(--spacing-6, 1.5rem);
+  border-top: 1px solid var(--color-border-primary);
+}
+
+.f0-edit-link {
+  display: inline-block;
+  margin-bottom: var(--spacing-6, 1.5rem);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.f0-edit-link:hover {
+  color: var(--color-accent);
+}
+
+.f0-pager {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-4, 1rem);
+}
+
+.f0-pager-link {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1, 0.25rem);
+  padding: var(--spacing-3, 0.75rem) var(--spacing-4, 1rem);
+  border: 1px solid var(--color-border-primary);
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  transition: border-color var(--transition-fast, 0.15s);
+}
+
+.f0-pager-link:hover {
+  border-color: var(--color-accent);
+}
+
+.f0-pager-next {
+  grid-column: 2;
+  text-align: right;
+}
+
+.f0-pager-label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.f0-pager-title {
+  font-weight: 500;
+  color: var(--color-accent);
+}
+
+@media (max-width: 640px) {
+  .f0-pager {
+    grid-template-columns: 1fr;
+  }
+
+  .f0-pager-next {
+    grid-column: 1;
+  }
+}
+
 .markdown-page {
   position: relative;
 }
