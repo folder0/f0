@@ -87,6 +87,19 @@ describe('brand accent colour', () => {
     expect(html).toContain(':root:root { --color-accent: #0d9488;')
   })
 
+  it('puts both logos in the page and lets the theme pick one', async () => {
+    writeFileSync(join(site.contentDir, '_brand.md'), '---\nlogo: ./assets/images/logo.png\nlogo_dark: ./assets/images/logo-dark.png\nheader_style: logo_only\n---\n')
+    await new Promise(r => setTimeout(r, 20))
+    const html = await (await get(`${server.url}/`)).text()
+    expect(html).toMatch(/<img src="\/api\/content\/assets\/images\/logo\.png"[^>]*class="header-logo-img header-logo-light"/)
+    expect(html).toMatch(/<img src="\/api\/content\/assets\/images\/logo-dark\.png"[^>]*class="header-logo-img header-logo-dark"/)
+  })
+
+  it('serves fonts itself, with no third-party font requests', async () => {
+    const html = await (await get(`${server.url}/`)).text()
+    expect(html).not.toMatch(/fonts\.googleapis|fonts\.gstatic/)
+  })
+
   it('loads custom_css after the theme stylesheet', async () => {
     writeFileSync(join(site.contentDir, 'assets/custom.css'), ':root { --color-text-primary: #123456; }\n')
     writeFileSync(join(site.contentDir, '_brand.md'), '---\ncustom_css: ./assets/custom.css\n---\n')

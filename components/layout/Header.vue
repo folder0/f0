@@ -19,10 +19,19 @@ USAGE:
     <!-- Logo / Brand -->
     <NuxtLink to="/" class="header-logo">
       <template v-if="brand?.headerStyle !== 'text_only' && brand?.logo">
-        <img 
-          :src="currentLogo" 
-          :alt="siteName" 
+        <!-- Both logos are in the HTML and CSS picks one from data-theme, which
+             is set before first paint: no wrong logo while scripts load -->
+        <img
+          :src="brand.logo"
+          :alt="siteName"
           class="header-logo-img"
+          :class="{ 'header-logo-light': hasDarkLogo }"
+        />
+        <img
+          v-if="hasDarkLogo"
+          :src="brand.logoDark"
+          :alt="siteName"
+          class="header-logo-img header-logo-dark"
         />
       </template>
       <span v-if="brand?.headerStyle !== 'logo_only' || !brand?.logo">
@@ -96,20 +105,12 @@ const siteName = config.public.siteName || 'f0'
 const { topNav, isActive } = useNavigation()
 const { isAuthenticated, logout } = useAuth()
 const { openSearch } = useSearch()
-const { resolvedTheme } = useTheme()
 
 // Fetch brand configuration
 const { data: brand } = await useFetch('/api/brand', { key: 'brand' })
 
-// Computed logo based on the ACTUAL applied theme (resolvedTheme), not the
-// preference — otherwise 'system' + dark would never use the dark logo.
-const currentLogo = computed(() => {
-  if (!brand.value) return ''
-  if (resolvedTheme.value === 'dark' && brand.value.logoDark) {
-    return brand.value.logoDark
-  }
-  return brand.value.logo || ''
-})
+// A separate dark-mode logo (logo_dark defaults to logo)
+const hasDarkLogo = computed(() => !!brand.value?.logoDark && brand.value.logoDark !== brand.value.logo)
 
 // Emit event for mobile menu toggle
 defineEmits(['toggle-sidebar'])
@@ -154,6 +155,18 @@ function handleLogout() {
   height: 28px;
   width: auto;
   object-fit: contain;
+}
+
+.header-logo-dark {
+  display: none;
+}
+
+:root[data-theme="dark"] .header-logo-dark {
+  display: block;
+}
+
+:root[data-theme="dark"] .header-logo-light {
+  display: none;
 }
 
 .header-nav {

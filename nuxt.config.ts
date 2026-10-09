@@ -70,6 +70,15 @@ export default defineNuxtConfig({
   // CSS stylesheets
   
   css: [
+    // Self-hosted fonts (served from /_nuxt/, no third-party requests). Same
+    // family names as before ('Inter', 'JetBrains Mono'); browsers fetch only
+    // the scripts a page uses.
+    '@fontsource/inter/400.css',
+    '@fontsource/inter/500.css',
+    '@fontsource/inter/600.css',
+    '@fontsource/inter/700.css',
+    '@fontsource/jetbrains-mono/400.css',
+    '@fontsource/jetbrains-mono/500.css',
     '~/assets/css/main.css',             // Core theme (light + dark mode)
     '~/assets/css/blog.css',             // Blog-specific styles
   ],
@@ -87,15 +96,6 @@ export default defineNuxtConfig({
       meta: [
         { charset: 'utf-8' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-      ],
-      link: [
-        // Inter font from Google Fonts for Notion-like typography
-        { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
-        { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
-        { 
-          rel: 'stylesheet', 
-          href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap' 
-        },
       ],
       // Inline script to prevent theme flash - runs before page renders
       script: [
