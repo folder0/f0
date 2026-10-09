@@ -7,10 +7,11 @@
  * 
  * Returns 200 only if the instance can serve content — meaning:
  * 1. The content directory exists and is readable
- * 2. nav.md is present and parseable (if it exists)
- * 
+ * 2. Startup warm-up (rendering every page, /llms.txt) has finished
+ * 3. nav.md is reported (optional, never blocks readiness)
+ *
  * An instance can be healthy (process running) but not ready (content
- * volume not mounted yet, permissions wrong, etc.).
+ * volume not mounted yet, permissions wrong, still warming up).
  * 
  * Use for:
  * - Kubernetes readiness probes
@@ -25,6 +26,7 @@ import { constants } from 'fs'
 import { logger } from '../utils/logger'
 import { resolve, join } from 'path'
 import { f0Config } from '../utils/f0-config'
+import { isWarm } from '../utils/readiness'
 
 export default defineEventHandler(async () => {
   const settings = f0Config()
@@ -52,8 +54,24 @@ export default defineEventHandler(async () => {
     })
   }
 
+  // Check 2: warm-up finished
+  if (!isWarm()) {
+    checks.warmup = 'fail'
+    throw createError({
+      statusCode: 503,
+      statusMessage: 'Not Ready',
+      data: {
+        status: 'warming_up',
+        reason: 'Startup warm-up still running',
+        checks,
+        timestamp: Date.now(),
+      },
+    })
+  }
+  checks.warmup = 'ok'
+
   try {
-    // Check 2: nav.md exists (non-fatal — zero-config principle)
+    // Check 3: nav.md exists (non-fatal — zero-config principle)
     await stat(join(contentDir, 'nav.md'))
     checks.navMd = 'ok'
   } catch {

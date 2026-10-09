@@ -286,7 +286,7 @@ Configure AWS SES for email delivery. Flow: email challenge → 8-digit OTP → 
 
 ```
 GET /_health    → Liveness (always 200 if process alive, includes cache stats)
-GET /_ready     → Readiness (validates content directory accessible)
+GET /_ready     → Readiness (content directory readable and startup warm-up finished)
 ```
 
 Both bypass auth in private mode.

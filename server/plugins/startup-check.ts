@@ -29,6 +29,7 @@ import { isConfinedEntry } from '../utils/paths'
 import { prewarmCache } from '../utils/cache'
 import { getCachedLlmsTxt } from '../utils/llms-cache'
 import { isMarkdownFile } from '../utils/markdown'
+import { markWarm } from '../utils/readiness'
 import { f0Config } from '../utils/f0-config'
 
 /**
@@ -145,23 +146,39 @@ export default defineNitroPlugin(async () => {
   // CHECK 4: Pre-warm content cache
   // =========================================================================
 
-  logger.info('Pre-warming content cache...')
-  const contentFiles = await scanContentFiles(contentDir)
-  const { cached, errors } = await prewarmCache(contentFiles)
-  logger.info('Content cache warmed', { pages: cached, errors })
-
-  // =========================================================================
-  // CHECK 5: Pre-compute /llms.txt
-  // =========================================================================
-
+  // /_ready answers 503 until this section finishes. Warm-up failures are not
+  // fatal (pages render on demand), so the instance becomes ready either way.
+  let cached = 0
+  let errors = 0
   try {
-    const siteName = config.public?.siteName || 'f0'
-    await getCachedLlmsTxt(contentDir, siteName)
-    logger.info('/llms.txt pre-computed')
-  } catch (error) {
-    logger.warn('Failed to pre-compute /llms.txt', {
+    logger.info('Pre-warming content cache...')
+    const contentFiles = await scanContentFiles(contentDir)
+    const warmed = await prewarmCache(contentFiles)
+    cached = warmed.cached
+    errors = warmed.errors
+    logger.info('Content cache warmed', { pages: cached, errors })
+
+    // =======================================================================
+    // CHECK 5: Pre-compute /llms.txt
+    // =======================================================================
+
+    try {
+      const siteName = config.public?.siteName || 'f0'
+      await getCachedLlmsTxt(contentDir, siteName)
+      logger.info('/llms.txt pre-computed')
+    } catch (error) {
+      logger.warn('Failed to pre-compute /llms.txt', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+  catch (error) {
+    logger.warn('Warm-up failed; pages will render on first request', {
       error: error instanceof Error ? error.message : String(error),
     })
+  }
+  finally {
+    markWarm()
   }
 
   // =========================================================================

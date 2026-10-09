@@ -70,6 +70,7 @@ Expect conflicts where the fork changed the same files (for example `server/midd
 | All settings are read at startup from the runtime environment; `nuxt.config.ts` reads no environment variables | Values that existed only at build time no longer apply. Short names (`AUTH_MODE`, `JWT_SECRET`, ...) now work at runtime as well as the `NUXT_` names | Make sure every setting is in the runtime environment. In fork code, read server settings with `f0Config()` from `server/utils/f0-config.ts`: `useRuntimeConfig()` no longer has `authMode`, `contentDir`, `privateDir`, `jwtSecret`, the AWS keys or `emailFrom` |
 | A private site without a JWT secret (or with the old `change-me-in-production` placeholder) refuses to start | The container exits with `Refusing to start` in the log; the old container keeps serving during a rolling deploy | Set `NUXT_JWT_SECRET` to 32+ random characters |
 | Health check probes `/_ready` on `127.0.0.1` | Faster, lighter probes | Use `/_ready` in any dashboard health check |
+| `/_ready` answers 503 `warming_up` until startup warm-up finishes (at most 45 seconds) | A new container takes traffic a few seconds later, but its first requests are fast | If an external monitor alerts on a single 503 from `/_ready`, give it a grace period after deploys |
 | Node.js 24 base image | None expected | Rebuild the image |
 
 ## 5. After deploying

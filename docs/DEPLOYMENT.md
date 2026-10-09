@@ -68,7 +68,7 @@ In private mode, users listed in `admins` in `private/allowlist.json` can upload
 | Endpoint | Meaning |
 |----------|---------|
 | `/_health` | The process is alive |
-| `/_ready` | The content directory is readable. Use this for load balancers and Coolify. |
+| `/_ready` | The content directory is readable and the startup warm-up (rendering every page) has finished. Answers 503 `warming_up` until then, for at most 45 seconds. Use this for load balancers and Coolify. |
 
 Both answer without a login in private mode. The Dockerfile's `HEALTHCHECK` probes `/_ready`.
 

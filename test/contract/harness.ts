@@ -81,9 +81,11 @@ export interface ServerOptions {
   site: Site
   authMode?: 'public' | 'private'
   env?: Record<string, string>
+  /** Probe that must answer 200 before the server counts as started. */
+  waitFor?: '/_ready' | '/_health'
 }
 
-export async function startServer({ site, authMode = 'public', env = {} }: ServerOptions): Promise<RunningServer> {
+export async function startServer({ site, authMode = 'public', env = {}, waitFor = '/_ready' }: ServerOptions): Promise<RunningServer> {
   if (!existsSync(SERVER_ENTRY)) {
     throw new Error('No build found at .output/server/index.mjs. Run `npm run build` first.')
   }
@@ -126,7 +128,7 @@ export async function startServer({ site, authMode = 'public', env = {} }: Serve
       throw new Error(`Server exited (${child.exitCode ?? child.signalCode}) before becoming healthy:\n${output}`)
     }
     try {
-      const response = await fetch(`${url}/_health`)
+      const response = await fetch(url + waitFor)
       if (response.ok) break
     }
     catch {
@@ -135,7 +137,7 @@ export async function startServer({ site, authMode = 'public', env = {} }: Serve
     if (Date.now() > deadline) {
       child.kill('SIGKILL')
       await exit
-      throw new Error(`Server did not become healthy within 20s:\n${output}`)
+      throw new Error(`Server did not answer ${waitFor} within 20s:\n${output}`)
     }
     await new Promise(r => setTimeout(r, 100))
   }
