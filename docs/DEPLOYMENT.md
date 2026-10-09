@@ -6,6 +6,15 @@ An overview of running f0 in production. For step-by-step Coolify instructions, 
 
 f0 is a Node.js server built from this repository with the included Dockerfile. It reads Markdown from `/app/content` at runtime and, in private mode, the allowlist from `/app/private`. One container serves one site.
 
+The Dockerfile has two targets:
+
+| Target | Contents | Use |
+|--------|----------|-----|
+| `site` (default) | The app plus this repository's `content/` and `private/` | Building a site from its own repository, as Coolify does |
+| `engine` | The app with empty `content/` and `private/` | One image shared by many sites, with content mounted or added on top |
+
+Content is copied last, so changing only content reuses the cached app build: `docker build --target engine -t f0-engine .` once, then content changes cost seconds.
+
 | Platform | Notes |
 |----------|-------|
 | **Coolify** | The documented path. See the Coolify guide. |

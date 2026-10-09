@@ -176,7 +176,7 @@ your-repo/
 └── ... app files
 ```
 
-Push to the deployed branch and Coolify rebuilds and redeploys. Every content push rebuilds the image.
+Push to the deployed branch and Coolify rebuilds and redeploys. The Dockerfile copies content last, so a content-only push reuses the cached app build and only rewrites the small content layer. That needs two things: the Docker build cache must be kept (Step 1.3), and **Include Source Commit in Build** must stay off in the application's advanced settings. When it is on, Coolify passes the commit id into every build stage, which forces a full rebuild on every push.
 
 ### Option B: content on a mounted directory
 
